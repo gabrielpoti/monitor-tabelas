@@ -9,7 +9,7 @@ import { varrerArea } from './area.js';
 import { conferirPrecos, conferirRegras } from './diario.js';
 import { varrerRede } from './rede.js';
 import { enviar, montarRelatorio } from './telegram.js';
-import { log, minutos } from './util.js';
+import { log, minutos, ultimoLog } from './util.js';
 
 const modo = process.argv[2] || 'diario';
 
@@ -20,6 +20,12 @@ async function main() {
   const registrarMudanca = (m) => mudancas.push({ ...m, execucao_id: exec.id });
   const cot = new Cotador();
   const resumo = {};
+  // Progresso visível no site enquanto roda (a cada minuto).
+  const pulso = setInterval(() => {
+    db.from('execucoes').update({ chamadas: cot.chamadas, erros: cot.erros, resumo: { fase: ultimoLog } })
+      .eq('id', exec.id).eq('status', 'rodando').then(() => {}, () => {});
+  }, 60_000);
+  pulso.unref();
 
   try {
     await cot.iniciar();

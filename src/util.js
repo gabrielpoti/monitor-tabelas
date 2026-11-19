@@ -7,7 +7,8 @@ export const minutos = () => ((Date.now() - INICIO) / 60000).toFixed(1);
 export const semAcento = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[’'`´-]/g, ' ').replace(/\s+/g, ' ').trim();
 
-export const log = (...a) => console.log(`[${minutos()}min]`, ...a);
+export let ultimoLog = 'iniciando';
+export const log = (...a) => { ultimoLog = a.join(' '); console.log(`[${minutos()}min]`, ...a); };
 
 // Executa fn em todos os itens com as chamadas limitadas pela fila do cliente.
 export async function emParalelo(itens, fn) {
