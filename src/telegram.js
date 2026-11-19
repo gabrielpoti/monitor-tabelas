@@ -25,7 +25,7 @@ const ROTULOS = {
   preco: '💲 Preço', novo_preco_agendado: '📅 Preço novo agendado', desconto: '🏷️ Desconto', encerrada: '⛔ Encerrada',
   combinacao_removida: '➖ Combinação removida', coparticipacao: '🧾 Coparticipação', carencia: '⏳ Carência',
   tabela_nova: '🆕 Tabela nova', tabela_removida: '🗑️ Tabela removida', tabela_voltou: '↩️ Tabela voltou', planos: '📋 Planos',
-  area_entrou: '📍 Área (entrou)', area_saiu: '📍 Área (saiu)', rede: '🏥 Rede',
+  area_entrou: '📍 Área (entrou)', area_saiu: '📍 Área (saiu)', rede: '🏥 Rede', desconto_vidas: '👪 Desconto por quantidade',
 };
 
 export function montarRelatorio(modo, mudancas, resumo, saude = {}) {

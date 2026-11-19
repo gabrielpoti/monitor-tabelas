@@ -5,10 +5,11 @@ on:
     - cron: '17 6 * * *'     # todo dia 03:17 (Brasília): preços, coparticipação e carência
     - cron: '43 2 * * 0,3'   # sáb e ter 23:43 (Brasília): cidades + área de comercialização
     - cron: '29 9 * * 2,5'   # ter e sex 06:29 (Brasília): rede credenciada (ciclo de 90 dias, retoma de onde parou)
+    - cron: '47 9 * * 1'     # segunda 06:47 (Brasília): desconto por quantidade de vidas
   workflow_dispatch:
     inputs:
       modo:
-        description: 'diario, semanal, rede, cidades, area ou teste'
+        description: 'diario, semanal, rede, descontos, cidades, area ou teste'
         required: true
         default: 'teste'
 
@@ -38,6 +39,7 @@ jobs:
             case "${{ github.event.schedule }}" in
               "17 6 * * *") MODO=diario ;;
               "29 9 * * 2,5") MODO=rede ;;
+              "47 9 * * 1") MODO=descontos ;;
               *) MODO=semanal ;;
             esac
           fi

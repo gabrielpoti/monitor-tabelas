@@ -8,6 +8,7 @@ import { sincronizarCidades } from './cidades.js';
 import { varrerArea } from './area.js';
 import { conferirPrecos, conferirRegras } from './diario.js';
 import { varrerRede } from './rede.js';
+import { conferirDescontos } from './descontos.js';
 import { enviar, montarRelatorio } from './telegram.js';
 import { log, minutos, ultimoLog } from './util.js';
 
@@ -42,6 +43,7 @@ async function main() {
     if (modo === 'area' || (modo === 'semanal' && resumo.cidades?.completo)) resumo.area = await varrerArea(cot, registrarMudanca);
     if (modo === 'semanal' && !resumo.cidades?.completo) resumo.area = { completa: false, aguardandoCidades: true };
     if (modo === 'rede') resumo.rede = await varrerRede(cot, registrarMudanca);
+    if (modo === 'descontos') resumo.descontos = await conferirDescontos(cot, registrarMudanca);
     if (modo === 'diario') {
       resumo.precos = await conferirPrecos(cot, registrarMudanca);
       resumo.regras = await conferirRegras(cot, registrarMudanca);
@@ -63,7 +65,8 @@ async function main() {
       // Na 1ª carga não há o que comparar: avisa só que a base foi montada.
       const silencioso = !mudancas.length && (
         (modo === 'semanal' && resumo.area && !resumo.area.completa) ||
-        (modo === 'rede' && (resumo.rede?.emDia || resumo.rede?.aguardandoArea || !resumo.rede?.cicloCompleto)));
+        (modo === 'rede' && (resumo.rede?.emDia || resumo.rede?.aguardandoArea || !resumo.rede?.cicloCompleto)) ||
+        (modo === 'descontos' && resumo.descontos?.aguardandoArea));
       const saude = { chamadas: cot.chamadas, erros: cot.erros, errosCotador: resumo.errosCotador };
       const comProblema = cot.chamadas > 0 && cot.erros / cot.chamadas > 0.05;
       if (!silencioso || comProblema) await enviar(montarRelatorio(modo, mudancas, extras.join(' · '), saude));

@@ -16,13 +16,15 @@ export default async function Tabela({ params, searchParams }) {
   const uf = ufs.find((u) => u.uf === sp.uf) || ufs[0];
   const grupo = grupoDe(t.operadora);
 
-  const [precos, copart, carencia, cidadesUf, mudancas] = uf ? await Promise.all([
+  const [precos, copart, carencia, cidadesUf, mudancas, descontos] = uf ? await Promise.all([
     tudo(() => s.from('precos').select('*').eq('tabela_id', id).eq('uf_id', uf.uf_id)),
     tudo(() => s.from('coparticipacao').select('*').eq('tabela_id', id).eq('uf_id', uf.uf_id)),
     tudo(() => s.from('carencia').select('*').eq('tabela_id', id).eq('uf_id', uf.uf_id)),
     tudo(() => s.from('tabela_cidade').select('cidade_id').eq('tabela_id', id)),
     s.from('mudancas').select('id,tipo,descricao,detectado_em,uf').eq('tabela_id', id).order('id', { ascending: false }).limit(20),
-  ]) : [[], [], [], [], { data: [] }];
+    tudo(() => s.from('descontos').select('plano_id,acomodacao,coparticipacao,texto,tem_desconto').eq('tabela_id', id).eq('uf_id', uf.uf_id)),
+  ]) : [[], [], [], [], { data: [] }, []];
+  const descDe = new Map(descontos.map((d) => [`${d.plano_id}|${d.acomodacao}|${d.coparticipacao}`, d]));
 
   // grade de preços: plano × acomodação × copart × taxa, colunas = faixas
   const linhas = new Map();
@@ -75,13 +77,14 @@ export default async function Tabela({ params, searchParams }) {
       )}
 
       <h2>Preços por faixa etária {uf && `— ${uf.uf}`}</h2>
-      <p className="pequeno">Valor mensal por beneficiário. Conferido em {dataHoraBR(atualizado) || '—'}. Toque em uma linha para ver o histórico.</p>
+      <p className="pequeno">Valor mensal por beneficiário (cotação de 1 pessoa). Conferido em {dataHoraBR(atualizado) || '—'}. Toque em uma linha para ver o histórico. {descontos.length ? (descontos.some((d) => d.tem_desconto) ? '👪 = desconto por quantidade de pessoas.' : 'Sem desconto por quantidade de pessoas nesta UF.') : 'Desconto por quantidade ainda não conferido (às segundas).'}</p>
       {grade.length ? (
         <div className="rolagem"><table>
           <thead><tr><th>Plano</th><th>Acomodação</th><th>Coparticipação</th>{FAIXAS.map((f) => <th key={f} className="n">{rotuloFaixa(f)}</th>)}<th></th></tr></thead>
           <tbody>{grade.map((l) => (
             <tr key={l.k} style={sel?.k === l.k ? { outline: '2px solid var(--destaque)' } : undefined}>
-              <td><a href={`${qs({ h: l.k, faixa: faixaSel })}#historico`}>{l.plano}</a>{l.taxa != null && <span className="pequeno"> · adesão {brl(l.taxa)}</span>}</td>
+              <td><a href={`${qs({ h: l.k, faixa: faixaSel })}#historico`}>{l.plano}</a>{l.taxa != null && <span className="pequeno"> · adesão {brl(l.taxa)}</span>}
+                {descDe.get(`${l.plano_id}|${l.acomodacao}|${l.coparticipacao}`)?.tem_desconto && <div className="pequeno">👪 {descDe.get(`${l.plano_id}|${l.acomodacao}|${l.coparticipacao}`).texto}</div>}</td>
               <td>{l.acomodacao}</td><td>{l.coparticipacao}</td>
               {FAIXAS.map((f) => <td key={f} className="n">{l.f[f] != null ? brl(l.f[f]) : '—'}</td>)}
               <td>{l.novo && <span className="chip alerta">novo preço {dataBR(l.novo)}</span>}{l.encerrada && <span className="chip erro">encerrada</span>}{l.desconto != null && <span className="chip">desc. {l.desconto}</span>}</td>

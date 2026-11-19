@@ -200,11 +200,11 @@ export class Cotador {
     return itens;
   }
 
-  async opcoesPreco(ufId, tipoTabela, planosIds, idade) {
+  async opcoesPreco(ufId, tipoTabela, planosIds, idade, vidas = 1) {
     const itens = [];
     for (let desloc = 0; ; desloc += 100) {
       const d = await this.ferramenta('cotacao.listar-opcoes-preco', {
-        ufId, tipoTabela, planosIds, idades: [{ idade, vidas: 1 }], limite: 100, deslocamento: desloc,
+        ufId, tipoTabela, planosIds, idades: [{ idade, vidas }], limite: 100, deslocamento: desloc,
       });
       itens.push(...(d?.itens || []));
       if (!d?.truncado || !d?.itens?.length) break;

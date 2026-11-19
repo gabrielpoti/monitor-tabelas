@@ -53,3 +53,10 @@ Variáveis na Vercel:
 
 O cotador limita consultas em sequência. O cliente pausa sozinho quando recebe erros seguidos ou aviso de limite
 e tenta de novo. Ajuste fino: `CONCORRENCIA` (padrão 2) e `PAUSA_MS` (padrão 250).
+
+## Desconto por quantidade de vidas
+
+Modo `descontos` (segunda 06:47): cota cada plano com 1, 2, 3, 4, 5, 6, 8, 10, 15, 20 e 30 pessoas (faixa 29 a 33 anos)
+e compara valor cheio × valor com desconto, montando a regra (ex.: "1: sem desconto · 2: 10% · 3: 15% · 4 ou mais: 20%").
+Vai para a tabela `descontos`, para a aba **Descontos** e a coluna "Desconto por quantidade de vidas" da planilha de preços,
+e para a página de cada tabela. Mudança de regra vira alerta. O cotador não informa a validade das campanhas.

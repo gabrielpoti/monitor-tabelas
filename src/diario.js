@@ -47,7 +47,7 @@ export async function conferirPrecos(cot, registrarMudanca) {
             tabela_id: it.tabelaId, plano_id: it.planoId, uf_id: lote.ufId, faixa,
             acomodacao: it.acomodacao || '', coparticipacao: it.coparticipacao || '', taxa_adesao: it.taxaAdesao ?? null,
             plano: it.plano, operadora_id: it.operadoraId, valor: it.valorTotal, valor_bruto: it.valorBruto,
-            desconto: it.desconto ?? null, encerrada: !!it.encerrada, encerrada_em: it.encerradaEm, novo_preco_em: it.novoPrecoEm,
+            desconto: it.desconto ?? (Number(it.valorBruto) > Number(it.valorTotal) ? Math.round((1 - it.valorTotal / it.valorBruto) * 1000) / 10 : null), encerrada: !!it.encerrada, encerrada_em: it.encerradaEm, novo_preco_em: it.novoPrecoEm,
             uf: lote.planos[0].uf, tipo_tabela: lote.tipo, administradora: t.administradora, atualizado_em: agora,
           };
           linha.chave = chavePreco(linha);

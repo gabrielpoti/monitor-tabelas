@@ -72,21 +72,57 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const recorte = `${grupo || 'Todas as operadoras'} — ${cidade ? `${cidade.nome}/${cidade.uf}` : 'todas as cidades'}${tipo ? ` — ${tipo}` : ''}${admin ? ` — ${admin}` : ''}`;
   const hoje = dataBR(new Date());
 
+  // Descontos por quantidade de vidas (conferidos semanalmente)
+  const descontos = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    descontos.push(...await tudo(() => {
+      let q = s.from('descontos').select('*').in('tabela_id', ids.slice(i, i + 150));
+      if (cidade) q = q.eq('uf_id', cidade.uf_id);
+      return q;
+    }));
+  }
+  const descPorLinha = new Map(descontos.map((d) => [`${d.tabela_id}|${d.uf}|${d.plano}|${d.acomodacao}|${d.coparticipacao}`, d]));
+
   // Preços
   const ws = wb.addWorksheet('Preços');
   const temLogo = await logo(wb, ws, grupo);
   titulo(ws, `Tabela de preços — ${recorte}`, `Valores mensais por beneficiário, conforme o Cotador Simplificado em ${hoje}.`, temLogo);
   const cols = ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'Mín. vidas', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'Taxa de adesão',
-    ...FAIXAS.map(rotuloFaixa), 'Desconto', 'Encerrada', 'Preço novo em'];
+    ...FAIXAS.map(rotuloFaixa), 'Desconto (%)', 'Desconto por quantidade de vidas', 'Encerrada', 'Preço novo em'];
   cabecalho(ws, 4, cols);
   for (const l of linhas) {
     const row = ws.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
-      l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto, l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
+      l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto,
+      descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`)?.texto || '',
+      l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
-    row.getCell(23).numFmt = 'dd/mm/yyyy';
+    row.getCell(24).numFmt = 'dd/mm/yyyy';
   }
   if (!linhas.length) ws.addRow(['Ainda não há preços conferidos para este recorte. Eles entram após a conferência diária.']);
-  larguras(ws, [16, 38, 14, 7, 8, 5, 26, 13, 24, 10, ...FAIXAS.map(() => 11), 10, 10, 12]);
+  larguras(ws, [16, 38, 14, 7, 8, 5, 26, 13, 24, 10, ...FAIXAS.map(() => 11), 10, 44, 10, 12]);
+
+  // Aba Descontos: regra por quantidade de vidas, uma linha por plano/acomodação/coparticipação
+  const QTDS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30];
+  const tabInfo = new Map(tabelas.map((t) => [t.id, t]));
+  const wdsc = wb.addWorksheet('Descontos');
+  cabecalho(wdsc, 1, ['Operadora', 'Administradora', 'Tabela', 'Tipo', 'Plano', 'Acomodação', 'Coparticipação', 'UF', 'Regra de desconto por quantidade', 'Maior desconto',
+    ...QTDS.map((q) => `${q} ${q === 1 ? 'pessoa' : 'pessoas'}`), 'Exemplo 29 a 33 anos: valor cheio', 'Com o maior desconto', 'Conferido em']);
+  const ordenados = descontos.slice().sort((a, b) => (b.tem_desconto - a.tem_desconto) || `${a.uf}${a.tabela_id}${a.plano}`.localeCompare(`${b.uf}${b.tabela_id}${b.plano}`));
+  for (const d of ordenados) {
+    const t = tabInfo.get(d.tabela_id) || {};
+    const porQ = new Map((d.regra || []).map((r) => [r.vidas, r]));
+    const maior = (d.regra || []).reduce((m, r) => (r.pct > (m?.pct ?? -1) ? r : m), null);
+    const row = wdsc.addRow([t.operadora, t.administradora, t.nome, t.tipo_tabela, d.plano, d.acomodacao, d.coparticipacao, d.uf, d.texto,
+      d.maior_pct ? Number(d.maior_pct) / 100 : 0,
+      ...QTDS.map((q) => (porQ.has(q) ? porQ.get(q).pct / 100 : null)),
+      maior ? maior.bruto / maior.vidas : null, maior ? maior.total / maior.vidas : null, d.atualizado_em ? new Date(d.atualizado_em) : null]);
+    row.getCell(10).numFmt = '0.0%';
+    for (let i = 11; i < 11 + QTDS.length; i++) row.getCell(i).numFmt = '0.0%';
+    row.getCell(11 + QTDS.length).numFmt = row.getCell(12 + QTDS.length).numFmt = '"R$" #,##0.00';
+    row.getCell(13 + QTDS.length).numFmt = 'dd/mm/yyyy';
+  }
+  if (!descontos.length) wdsc.addRow(['Descontos por quantidade ainda não conferidos para este recorte (conferência semanal, às segundas).']);
+  larguras(wdsc, [16, 14, 36, 7, 24, 12, 22, 5, 50, 10, ...QTDS.map(() => 9), 14, 14, 12]);
 
   // Tabelas e planos
   const wt = wb.addWorksheet('Tabelas e planos');
