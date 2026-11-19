@@ -86,16 +86,17 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   // Preços
   const ws = wb.addWorksheet('Preços');
   const temLogo = await logo(wb, ws, grupo);
-  titulo(ws, `Tabela de preços — ${recorte}`, `Valores mensais por beneficiário, conforme o Cotador Simplificado em ${hoje}.`, temLogo);
+  titulo(ws, `Tabela de preços — ${recorte}`, `Valor de tabela (cheio), mensal por beneficiário, conforme o Cotador Simplificado em ${hoje}. Descontos e campanhas na coluna Desconto e na aba "Preços com desconto".`, temLogo);
   const cols = ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'Mín. vidas', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'Taxa de adesão',
     ...FAIXAS.map(rotuloFaixa), 'Desconto (%)', 'Desconto por quantidade de vidas', 'Encerrada', 'Preço novo em'];
   cabecalho(ws, 4, cols);
   for (const l of linhas) {
     const row = ws.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
-      l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto,
+      l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto != null ? Number(l.desconto) / 100 : null,
       descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`)?.texto || '',
       l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
+    row.getCell(21).numFmt = '0.0%';
     row.getCell(24).numFmt = 'dd/mm/yyyy';
   }
   if (!linhas.length) ws.addRow(['Ainda não há preços conferidos para este recorte. Eles entram após a conferência diária.']);
@@ -123,6 +124,21 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   }
   if (!descontos.length) wdsc.addRow(['Descontos por quantidade ainda não conferidos para este recorte (conferência semanal, às segundas).']);
   larguras(wdsc, [16, 14, 36, 7, 24, 12, 22, 5, 50, 10, ...QTDS.map(() => 9), 14, 14, 12]);
+
+  // Preços com desconto (campanhas e descontos da tabela, ex.: 75% na linha empresarial)
+  const comDesc = (await tudo(() => s.rpc('planilha_precos', { p_grupo: grupo || null, p_cidade: cidade?.id || null, p_tipo: tipo || null, p_admin: admin || null, p_com_desconto: true })))
+    .filter((l) => Number(l.desconto) > 0);
+  const wpd = wb.addWorksheet('Preços com desconto');
+  titulo(wpd, `Preços com desconto — ${recorte}`, `Somente planos com desconto ou campanha ativa no cotador em ${hoje}. O cotador não informa a validade da campanha.`, false);
+  cabecalho(wpd, 4, ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'Mín. vidas', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'Desconto (%)', ...FAIXAS.map(rotuloFaixa)]);
+  for (const l of comDesc) {
+    const row = wpd.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
+      Number(l.desconto) / 100, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c])))]);
+    row.getCell(10).numFmt = '0.0%';
+    for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
+  }
+  if (!comDesc.length) wpd.addRow(['Nenhum plano com desconto ou campanha neste recorte (ou os preços ainda não foram conferidos).']);
+  larguras(wpd, [16, 38, 14, 7, 8, 5, 26, 13, 24, 10, ...FAIXAS.map(() => 11)]);
 
   // Tabelas e planos
   const wt = wb.addWorksheet('Tabelas e planos');

@@ -26,12 +26,15 @@ export default async function Tabela({ params, searchParams }) {
   ]) : [[], [], [], [], { data: [] }, []];
   const descDe = new Map(descontos.map((d) => [`${d.plano_id}|${d.acomodacao}|${d.coparticipacao}`, d]));
 
+  const verDesconto = sp.vd === '1';
+  const temCampanha = precos.some((p) => Number(p.desconto) > 0);
   // grade de preços: plano × acomodação × copart × taxa, colunas = faixas
   const linhas = new Map();
   for (const p of precos) {
     const k = `${p.plano_id}|${p.acomodacao}|${p.coparticipacao}|${p.taxa_adesao ?? ''}`;
     if (!linhas.has(k)) linhas.set(k, { k, plano_id: p.plano_id, plano: p.plano, acomodacao: p.acomodacao, coparticipacao: p.coparticipacao, taxa: p.taxa_adesao, novo: p.novo_preco_em, encerrada: p.encerrada, desconto: p.desconto, f: {} });
-    const l = linhas.get(k); l.f[p.faixa] = p.valor; if (p.novo_preco_em) l.novo = p.novo_preco_em; if (p.encerrada) l.encerrada = true;
+    const l = linhas.get(k); l.f[p.faixa] = verDesconto ? p.valor : (p.valor_bruto ?? p.valor);
+    if (p.novo_preco_em) l.novo = p.novo_preco_em; if (p.encerrada) l.encerrada = true; if (p.desconto != null) l.desconto = p.desconto;
   }
   const grade = [...linhas.values()].sort((a, b) => `${a.plano}${a.acomodacao}${a.coparticipacao}`.localeCompare(`${b.plano}${b.acomodacao}${b.coparticipacao}`));
   const atualizado = precos.reduce((m, p) => (p.atualizado_em > m ? p.atualizado_em : m), '');
@@ -77,6 +80,9 @@ export default async function Tabela({ params, searchParams }) {
       )}
 
       <h2>Preços por faixa etária {uf && `— ${uf.uf}`}</h2>
+      {temCampanha && (
+        <div className="aviso">Esta tabela está com desconto/campanha no cotador. Mostrando {verDesconto ? <b>valores com desconto</b> : <b>valores de tabela (cheios)</b>} — <a href={qs({ ...(sp.h ? { h: sp.h } : {}), vd: verDesconto ? '0' : '1' })}>ver {verDesconto ? 'valores cheios' : 'valores com desconto'}</a>.</div>
+      )}
       <p className="pequeno">Valor mensal por beneficiário (cotação de 1 pessoa). Conferido em {dataHoraBR(atualizado) || '—'}. Toque em uma linha para ver o histórico. {descontos.length ? (descontos.some((d) => d.tem_desconto) ? '👪 = desconto por quantidade de pessoas.' : 'Sem desconto por quantidade de pessoas nesta UF.') : 'Desconto por quantidade ainda não conferido (às segundas).'}</p>
       {grade.length ? (
         <div className="rolagem"><table>
@@ -87,7 +93,7 @@ export default async function Tabela({ params, searchParams }) {
                 {descDe.get(`${l.plano_id}|${l.acomodacao}|${l.coparticipacao}`)?.tem_desconto && <div className="pequeno">👪 {descDe.get(`${l.plano_id}|${l.acomodacao}|${l.coparticipacao}`).texto}</div>}</td>
               <td>{l.acomodacao}</td><td>{l.coparticipacao}</td>
               {FAIXAS.map((f) => <td key={f} className="n">{l.f[f] != null ? brl(l.f[f]) : '—'}</td>)}
-              <td>{l.novo && <span className="chip alerta">novo preço {dataBR(l.novo)}</span>}{l.encerrada && <span className="chip erro">encerrada</span>}{l.desconto != null && <span className="chip">desc. {l.desconto}</span>}</td>
+              <td>{l.novo && <span className="chip alerta">novo preço {dataBR(l.novo)}</span>}{l.encerrada && <span className="chip erro">encerrada</span>}{Number(l.desconto) > 0 && <span className="chip alerta">desconto {String(l.desconto).replace('.', ',')}%</span>}</td>
             </tr>))}
           </tbody></table></div>
       ) : <div className="vazio">Preços ainda não conferidos para esta tabela. Eles entram na próxima conferência diária.{t.exige_entidade && t.tipo_tabela === 'PF' && ' Tabelas PF por adesão podem não ter preço sem a entidade.'}</div>}

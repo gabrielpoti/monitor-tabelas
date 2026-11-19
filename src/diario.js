@@ -71,7 +71,8 @@ export async function conferirPrecos(cot, registrarMudanca) {
     for (const n of linhas) {
       const a = antes.get(n.chave);
       if (!a) continue;
-      if (Number(a.valor) !== Number(n.valor)) alteradas.push({ a, n, p: pct(Number(a.valor), Number(n.valor)) });
+      const cheioA = Number(a.valor_bruto ?? a.valor), cheioN = Number(n.valor_bruto ?? n.valor);
+      if (cheioA !== cheioN) alteradas.push({ a, n, p: pct(cheioA, cheioN), cheioA, cheioN });
       if (n.novo_preco_em && n.novo_preco_em !== a.novo_preco_em) agendadas.push(n);
       if (n.encerrada && !a.encerrada) encerradas.push(n);
       if (String(a.desconto ?? '') !== String(n.desconto ?? '')) descontos.push({ a, n });
@@ -81,8 +82,8 @@ export async function conferirPrecos(cot, registrarMudanca) {
       const media = alteradas.reduce((s, x) => s + (x.p || 0), 0) / alteradas.length;
       const ex = alteradas[0];
       registrarMudanca({ ...base, tipo: 'preco', chave: k,
-        descricao: `${nome}: ${alteradas.length} preço(s) mudaram, média ${media >= 0 ? '+' : ''}${media.toFixed(1).replace('.', ',')}% — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: R$ ${brl(ex.a.valor)} → R$ ${brl(ex.n.valor)}`,
-        antes: alteradas.map((x) => ({ chave: x.a.chave, valor: x.a.valor })), depois: alteradas.map((x) => ({ chave: x.n.chave, valor: x.n.valor })) });
+        descricao: `${nome}: ${alteradas.length} preço(s) de tabela mudaram, média ${media >= 0 ? '+' : ''}${media.toFixed(1).replace('.', ',')}% — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: R$ ${brl(ex.cheioA)} → R$ ${brl(ex.cheioN)}`,
+        antes: alteradas.map((x) => ({ chave: x.a.chave, valor: x.cheioA })), depois: alteradas.map((x) => ({ chave: x.n.chave, valor: x.cheioN })) });
     }
     if (agendadas.length) {
       const datas = [...new Set(agendadas.map((x) => x.novo_preco_em.slice(0, 10)))].map((d) => d.split('-').reverse().join('/'));
@@ -96,7 +97,7 @@ export async function conferirPrecos(cot, registrarMudanca) {
     if (descontos.length) {
       const ex = descontos[0];
       registrarMudanca({ ...base, tipo: 'desconto', chave: k,
-        descricao: `${nome}: desconto mudou em ${descontos.length} combinação(ões) — ex.: ${ex.n.plano} ${ex.n.faixa}: ${ex.a.desconto ?? 'sem'} → ${ex.n.desconto ?? 'sem'}` });
+        descricao: `${nome}: desconto/campanha mudou em ${descontos.length} combinação(ões) — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: ${ex.a.desconto != null ? ex.a.desconto + '%' : 'sem desconto'} → ${ex.n.desconto != null ? ex.n.desconto + '%' : 'sem desconto'} (valor com desconto R$ ${brl(ex.n.valor)})` });
     }
     // combinações que existiam e sumiram (só se a tabela respondeu hoje)
     const sumiram = [...antes.values()].filter((a) => `${a.tabela_id}|${a.uf_id}` === k && !novos.has(a.chave));
@@ -109,9 +110,9 @@ export async function conferirPrecos(cot, registrarMudanca) {
   await gravar('precos', [...novos.values()], 'chave');
   // Histórico: grava o valor do dia sempre que é novo ou mudou (alimenta os gráficos do site).
   const historico = [...novos.values()]
-    .filter((n) => { const a = antes.get(n.chave); return !a || Number(a.valor) !== Number(n.valor); })
+    .filter((n) => { const a = antes.get(n.chave); return !a || Number(a.valor_bruto ?? a.valor) !== Number(n.valor_bruto ?? n.valor); })
     .map((n) => ({ chave: n.chave, tabela_id: n.tabela_id, plano_id: n.plano_id, uf_id: n.uf_id, faixa: n.faixa,
-      acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor }));
+      acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor_bruto ?? n.valor }));
   if (historico.length) await gravar('precos_historico', historico, 'chave,data');
   // remove só combinações das tabela/UF que responderam hoje e não trouxeram mais a combinação
   const remover = [...antes.values()].filter((a) => consultadas.has(`${a.tabela_id}|${a.uf_id}`) && !novos.has(a.chave)).map((a) => a.chave);

@@ -26,6 +26,7 @@ export function montarFaixas(regra) {
 export function textoFaixas(faixas) {
   if (!faixas.length) return '';
   if (faixas.every((f) => !f.pct)) return 'Sem desconto por quantidade';
+  if (faixas.length === 1) return `${fmtPct(faixas[0].pct)} em qualquer quantidade (campanha da tabela)`;
   return faixas.map((f) => {
     const rot = f.ate === null ? `${f.de} ou mais` : f.de === f.ate ? `${f.de}` : `${f.de} a ${f.ate}`;
     return `${rot}: ${fmtPct(f.pct)}`;
