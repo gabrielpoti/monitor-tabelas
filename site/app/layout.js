@@ -26,6 +26,7 @@ export default async function Layout({ children }) {
             <a className="item" href="/operadoras">Operadoras</a>
             <a className="item" href="/cidade">Por cidade</a>
             <a className="item" href="/comparar">Comparar</a>
+            <a className="item" href="/rede">Rede</a>
             <a className="item" href="/alteracoes">Alterações{n > 0 && <span className="badge">{n > 99 ? '99+' : n}</span>}</a>
             <a className="item" href="/reajustes">Reajustes</a>
             <a className="item" href="/config">Logos</a>

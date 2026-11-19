@@ -18,6 +18,13 @@ export const TIPOS_MUDANCA = {
   area_entrou: 'Área (entrou)', area_saiu: 'Área (saiu)', rede: 'Rede credenciada',
 };
 
+const TIPOS_LOCAL = {
+  hosp: 'Hospital', ps: 'Pronto-socorro', lab: 'Laboratório', cli: 'Clínica', img: 'Imagem / diagnóstico',
+  cons: 'Consultório', odonto: 'Odontologia', mat: 'Maternidade', terapia: 'Terapias', outros: 'Outros',
+};
+export const tipoLocal = (t) => TIPOS_LOCAL[t] || t || '—';
+export const listaTiposLocal = () => Object.entries(TIPOS_LOCAL);
+
 export function grupoDe(op) {
   const o = (op || '').toLowerCase();
   if (o.includes('clinipam')) return 'Hapvida Clinipam';

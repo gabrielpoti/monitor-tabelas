@@ -6,7 +6,8 @@ import { db, lerTudo, gravar, getConfig, setConfig } from './db.js';
 import { tempoAcabou, log, emParalelo, agrupar } from './util.js';
 
 const CICLO_DIAS = Number(process.env.REDE_CICLO_DIAS || 90);
-const TIPOS_DIVIDIR = ['hosp', 'ps', 'lab', 'cli', 'img', 'cons', 'odonto', 'outros'];
+const UFS_PRIORITARIAS = (process.env.REDE_UFS_PRIORITARIAS || 'CE,SP,RJ').split(',').map((s) => s.trim().toUpperCase());
+const TIPOS_DIVIDIR =['hosp', 'ps', 'lab', 'cli', 'img', 'cons', 'odonto', 'outros'];
 
 export async function varrerRede(cot, registrarMudanca) {
   if ((await getConfig('area_baseline_ok')) !== '1') {
@@ -30,9 +31,11 @@ export async function varrerRede(cot, registrarMudanca) {
   // Lista de trabalho: cada (cidade, tabela) com seus planos, em ordem estável.
   const tabelas = new Map((await lerTudo('tabelas', 'id,nome,operadora,operadora_id,planos', (q) => q.eq('ativa', true))).map((t) => [t.id, t]));
   const cidades = new Map((await lerTudo('cidades', 'id,nome,uf,uf_id')).map((c) => [c.id, c]));
+  // Ordem do ciclo: UFs prioritárias primeiro (CE, SP, RJ), depois o resto do Brasil.
+  const prioridade = (uf) => { const i = UFS_PRIORITARIAS.indexOf(uf); return i === -1 ? 9 : i; };
   const vinculos = (await lerTudo('tabela_cidade', 'tabela_id,cidade_id'))
     .filter((v) => tabelas.has(v.tabela_id) && cidades.has(v.cidade_id))
-    .map((v) => ({ ...v, k: `${String(v.cidade_id).padStart(7, '0')}|${String(v.tabela_id).padStart(7, '0')}` }))
+    .map((v) => ({ ...v, k: `${prioridade(cidades.get(v.cidade_id).uf)}|${String(v.cidade_id).padStart(7, '0')}|${String(v.tabela_id).padStart(7, '0')}` }))
     .sort((a, b) => (a.k < b.k ? -1 : 1));
   const pendentes = vinculos.filter((v) => v.k > cursor);
   const baseline = (await getConfig('rede_baseline_ok')) !== '1';
