@@ -116,7 +116,8 @@ export async function varrerRede(cot, registrarMudanca) {
     if ((i / 30) % 10 === 0) log(`Rede: ${i + lote.length}/${pendentes.length}, ${cot.chamadas} chamadas`);
   }
 
-  const restantes = vinculos.filter((v) => v.k > ((await getConfig('rede_cursor')) || '')).length;
+  const cursorFinal = (await getConfig('rede_cursor')) || '';
+  const restantes = vinculos.filter((v) => v.k > cursorFinal).length;
   if (restantes === 0) {
     await setConfig('rede_ultimo_inicio', inicio);
     await setConfig('rede_inicio', null);
