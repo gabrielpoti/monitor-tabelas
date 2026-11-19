@@ -18,11 +18,11 @@ export async function sincronizarCidades(cot) {
   const pendentes = municipios.filter((m) => !feitas.has(m.ibge) && !falhas.has(m.ibge));
   log(`Cidades: ${municipios.length} no IBGE, ${feitas.size} já ligadas, ${pendentes.length} a buscar`);
 
-  let achadas = 0, perdidas = 0;
+  let achadas = 0, perdidas = 0, comErro = 0;
   for (let i = 0; i < pendentes.length && !tempoAcabou(); i += 60) {
     const lote = pendentes.slice(i, i + 60);
     const ok = [], nao = [];
-    await emParalelo(lote, async (m) => {
+    const rs = await emParalelo(lote, async (m) => {
       // A busca é por início do nome; nomes longos são cortados para casar melhor.
       const termo = m.nome.length > 40 ? m.nome.slice(0, 40) : m.nome;
       const d = await cot.buscarCidade(m.uf, termo);
@@ -36,8 +36,11 @@ export async function sincronizarCidades(cot) {
     if (unicos.length) await gravar('cidades', unicos, 'id');
     if (nao.length) await gravar('cidades_nao_encontradas', nao, 'ibge');
     achadas += unicos.length; perdidas += nao.length;
+    comErro += rs.filter((r) => r?.__erro).length;
     if ((i / 60) % 10 === 0) log(`Cidades: ${i + lote.length}/${pendentes.length}`);
   }
   const { count } = await db.from('cidades').select('*', { count: 'exact', head: true });
-  return { cidadesNoCotador: count, novasAchadas: achadas, naoEncontradas: perdidas, completo: !tempoAcabou() };
+  // Completo só quando todo município do IBGE foi ligado ou confirmado como inexistente no cotador.
+  const faltam = pendentes.length - achadas - perdidas;
+  return { cidadesNoCotador: count, novasAchadas: achadas, naoEncontradas: perdidas, comErro, faltam, completo: faltam <= 0 };
 }

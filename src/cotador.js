@@ -17,6 +17,10 @@ export class Cotador {
     this.fila = [];
     this.ativas = 0;
     this.ultimaChamada = 0;
+    this.pausaAte = 0;
+    this.errosSeguidos = 0;
+    this.pausasPorLimite = 0;
+    this.mensagensErro = new Map();
   }
 
   // ---------- autenticação ----------
@@ -127,13 +131,37 @@ export class Cotador {
     try {
       const real = this.ferramentas.get(norm(nome));
       if (!real) throw new Error(`Ferramenta ${nome} não existe no MCP do cotador`);
-      const espera = this.ultimaChamada + PAUSA_MS - Date.now();
-      if (espera > 0) await sleep(espera);
-      this.ultimaChamada = Date.now();
-      this.chamadas++;
-      const res = await this.rpc('tools/call', { name: real, arguments: args });
-      if (res.isError) throw new Error(`${nome}: ${textoDe(res).slice(0, 300)}`);
-      return extrairDados(res);
+      for (let tentativa = 0; ; tentativa++) {
+        // pausa global (quando o cotador pede para esperar, todas as consultas esperam)
+        if (this.pausaAte > Date.now()) await sleep(this.pausaAte - Date.now());
+        const espera = this.ultimaChamada + PAUSA_MS - Date.now();
+        if (espera > 0) await sleep(espera);
+        this.ultimaChamada = Date.now();
+        this.chamadas++;
+        let msg;
+        try {
+          const res = await this.rpc('tools/call', { name: real, arguments: args });
+          if (!res.isError) { this.errosSeguidos = 0; return extrairDados(res); }
+          msg = textoDe(res);
+        } catch (e) {
+          msg = e.message;
+        }
+        this.registrarErro(nome, msg);
+        this.errosSeguidos++;
+        // Muitos erros seguidos = provável limite, mesmo sem mensagem clara.
+        const limite = this.errosSeguidos >= 3 || /limit|muitas|excedi|aguarde|tente (novamente|mais tarde)|rate|too many|throttl|bloquead|quota|cota/i.test(msg);
+        const transitorio = limite || /timeout|tempo esgotado|indispon|unavailable|502|503|504|ECONN|fetch failed|aborted/i.test(msg);
+        if ((!transitorio && tentativa >= 3) || tentativa >= 8) throw new Error(`${nome}: ${msg.slice(0, 300)}`);
+        const pedido = msg.match(/(\d+)\s*(segundo|second|s\b)/i)?.[1] * 1000 || msg.match(/(\d+)\s*(minuto|minute|min\b)/i)?.[1] * 60000;
+        const pausa = Math.min(pedido || (limite ? 30_000 * 2 ** tentativa : 3000 * 2 ** tentativa), 15 * 60_000);
+        if (limite) {
+          this.pausaAte = Math.max(this.pausaAte, Date.now() + pausa);
+          this.pausasPorLimite++;
+          if (this.pausasPorLimite <= 20) console.log(`[cotador] limite atingido; pausando ${Math.round(pausa / 1000)}s`);
+        } else {
+          await sleep(pausa);
+        }
+      }
     } catch (e) {
       this.erros++;
       throw e;
@@ -142,6 +170,16 @@ export class Cotador {
       const prox = this.fila.shift();
       if (prox) prox();
     }
+  }
+
+  registrarErro(nome, msg) {
+    const k = `${nome}: ${String(msg).slice(0, 160)}`;
+    this.mensagensErro.set(k, (this.mensagensErro.get(k) || 0) + 1);
+    if (this.mensagensErro.get(k) === 1 && this.mensagensErro.size <= 15) console.log('[cotador] erro:', k);
+  }
+
+  resumoErros() {
+    return [...this.mensagensErro.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m, n]) => `${n}× ${m}`);
   }
 
   vaga() {

@@ -32,7 +32,9 @@ async function main() {
       resumo.ferramentas = [...cot.ferramentas.values()];
     }
     if (modo === 'cidades' || modo === 'semanal') resumo.cidades = await sincronizarCidades(cot);
-    if (modo === 'area' || modo === 'semanal') resumo.area = await varrerArea(cot, registrarMudanca);
+    // A área só roda com a lista de cidades completa — senão a "varredura completa" ficaria parcial.
+    if (modo === 'area' || (modo === 'semanal' && resumo.cidades?.completo)) resumo.area = await varrerArea(cot, registrarMudanca);
+    if (modo === 'semanal' && !resumo.cidades?.completo) resumo.area = { completa: false, aguardandoCidades: true };
     if (modo === 'rede') resumo.rede = await varrerRede(cot, registrarMudanca);
     if (modo === 'diario') {
       resumo.precos = await conferirPrecos(cot, registrarMudanca);
@@ -40,6 +42,7 @@ async function main() {
     }
 
     if (mudancas.length) await inserir('mudancas', mudancas);
+    resumo.errosCotador = cot.resumoErros();
     await db.from('execucoes').update({
       fim: new Date().toISOString(), status: 'ok', chamadas: cot.chamadas, erros: cot.erros, resumo,
     }).eq('id', exec.id);
@@ -62,7 +65,7 @@ async function main() {
     if (mudancas.length) await inserir('mudancas', mudancas).catch(() => {});
     await db.from('execucoes').update({
       fim: new Date().toISOString(), status: 'erro', chamadas: cot.chamadas, erros: cot.erros,
-      resumo: { ...resumo, erro: String(e.message || e) },
+      resumo: { ...resumo, erro: String(e.message || e), errosCotador: cot.resumoErros() },
     }).eq('id', exec.id);
     await enviar(`⚠️ <b>Monitor de Tabelas (${modo}) falhou</b>\n${String(e.message || e).slice(0, 800)}`);
     process.exit(1);

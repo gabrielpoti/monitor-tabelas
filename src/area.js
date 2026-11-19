@@ -29,7 +29,7 @@ export async function varrerArea(cot, registrarMudanca) {
     const tabelas = new Map();
     const vinculos = [];
 
-    await emParalelo(lote, async (c) => {
+    const rs = await emParalelo(lote, async (c) => {
       for (const tipo of TIPOS_TABELA) {
         const itens = await cot.listarTabelas(c.uf_id, c.id, tipo);
         for (const t of itens.filter(monitorada)) {
@@ -96,8 +96,12 @@ export async function varrerArea(cot, registrarMudanca) {
 
     if (tabelas.size) await gravar('tabelas', [...tabelas.values()], 'id');
     if (vinculos.length) await gravar('tabela_cidade', dedup(vinculos), 'tabela_id,cidade_id');
-    cursor = lote[lote.length - 1].id;
+    // Avança só até a última cidade contínua que respondeu; se alguma falhou, para e retoma dali.
+    const primeiraFalha = rs.findIndex((r) => r?.__erro);
+    if (primeiraFalha === 0) { log('Área: falha na 1ª cidade do lote; retoma na próxima execução'); break; }
+    cursor = lote[(primeiraFalha === -1 ? lote.length : primeiraFalha) - 1].id;
     await setConfig('area_cursor', cursor);
+    if (primeiraFalha !== -1) { log('Área: falha no lote; retoma na próxima execução'); break; }
     if ((i / 40) % 10 === 0) log(`Área: ${i + lote.length}/${pendentes.length} cidades, ${cot.chamadas} chamadas`);
   }
 

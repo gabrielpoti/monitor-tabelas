@@ -32,3 +32,24 @@ Abra de novo o link de login da função `cotador-auth` (com a chave `k=` guarda
 
 - Operadoras: `src/config.js` (`OPERADORAS_IDS` e `OPERADORAS_NOMES`).
 - Ritmo: variáveis `CONCORRENCIA` (padrão 3) e `PAUSA_MS` (padrão 150).
+
+## Rede credenciada
+
+Modo `rede` (terça e sexta 06:29): coleta a rede de cada plano em cada cidade onde a tabela é vendida.
+Roda em ciclos de 90 dias — avança um pedaço por execução e, ao terminar, só recomeça 90 dias depois do início do ciclo.
+Começa depois que a 1ª varredura completa da área terminar. Mudanças (hospital que entrou/saiu) viram alerta.
+
+## Site (pasta `site/`, publicado na Vercel)
+
+Painel, operadoras, tabela (preço por faixa, histórico, coparticipação, carência, rede, área), por cidade, comparar cidades,
+alterações (lidas/não lidas + planilha), calendário de reajustes e logos. Login com senha única.
+
+Variáveis na Vercel:
+- `SUPABASE_SECRET_KEY` — a mesma chave `sb_secret_…` usada no GitHub
+- `SITE_PASSWORD` — a senha do site
+- `GITHUB_TOKEN` (opcional) — token fine-grained com "Actions: Read and write" neste repositório, para o botão "Rodar agora"
+
+## Ritmo e limite do cotador
+
+O cotador limita consultas em sequência. O cliente pausa sozinho quando recebe erros seguidos ou aviso de limite
+e tenta de novo. Ajuste fino: `CONCORRENCIA` (padrão 2) e `PAUSA_MS` (padrão 250).
