@@ -58,7 +58,9 @@ async function main() {
       const silencioso = !mudancas.length && (
         (modo === 'semanal' && resumo.area && !resumo.area.completa) ||
         (modo === 'rede' && (resumo.rede?.emDia || resumo.rede?.aguardandoArea || !resumo.rede?.cicloCompleto)));
-      if (!silencioso) await enviar(montarRelatorio(modo, mudancas, extras.join(' · ')));
+      const saude = { chamadas: cot.chamadas, erros: cot.erros, errosCotador: resumo.errosCotador };
+      const comProblema = cot.chamadas > 0 && cot.erros / cot.chamadas > 0.05;
+      if (!silencioso || comProblema) await enviar(montarRelatorio(modo, mudancas, extras.join(' · '), saude));
     }
   } catch (e) {
     console.error(e);

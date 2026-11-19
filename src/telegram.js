@@ -28,11 +28,17 @@ const ROTULOS = {
   area_entrou: '📍 Área (entrou)', area_saiu: '📍 Área (saiu)', rede: '🏥 Rede',
 };
 
-export function montarRelatorio(modo, mudancas, resumo) {
+export function montarRelatorio(modo, mudancas, resumo, saude = {}) {
   const data = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-  let t = `<b>Monitor de Tabelas — ${modo} ${data}</b>\n`;
+  const { chamadas = 0, erros = 0, errosCotador = [] } = saude;
+  const comProblema = chamadas > 0 && erros / chamadas > 0.05;
+  let t = `<b>${comProblema ? '⚠️ ' : ''}Monitor de Tabelas — ${modo} ${data}</b>\n`;
+  if (comProblema) {
+    t += `\n⚠️ ${erros} de ${chamadas} consultas falharam — os dados desta execução estão incompletos e serão completados na próxima.\n`;
+    if (errosCotador.length) t += `Motivo mais comum: ${esc(errosCotador[0]).slice(0, 300)}\n`;
+  }
   if (!mudancas.length) {
-    t += '\nNenhuma mudança encontrada nas operadoras monitoradas. ✅\n';
+    t += comProblema ? '\nNenhuma mudança encontrada no que foi conferido.\n' : '\nNenhuma mudança encontrada nas operadoras monitoradas. ✅\n';
   } else {
     t += `${mudancas.length} mudança(s):\n`;
     const porOp = new Map();
