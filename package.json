@@ -1,0 +1,19 @@
+{
+  "name": "monitor-tabelas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Monitor diário de tabelas, coparticipação, carência e área de comercialização via MCP oficial do Cotador Simplificado",
+  "scripts": {
+    "diario": "node src/index.js diario",
+    "semanal": "node src/index.js semanal",
+    "cidades": "node src/index.js cidades",
+    "area": "node src/index.js area",
+    "teste": "node src/index.js teste",
+    "check": "node --check src/*.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

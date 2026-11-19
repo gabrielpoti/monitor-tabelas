@@ -1,0 +1,40 @@
+name: Monitor de Tabelas
+
+on:
+  schedule:
+    - cron: '17 6 * * *'     # todo dia 03:17 (Brasília): preços, coparticipação e carência
+    - cron: '43 2 * * 0,3'   # domingo e quarta 23:43 (sáb/ter, Brasília): cidades + área de comercialização
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'diario, semanal, cidades, area ou teste'
+        required: true
+        default: 'teste'
+
+concurrency:
+  group: monitor-tabelas
+  cancel-in-progress: false
+
+jobs:
+  rodar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Rodar
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MODO="${{ github.event.inputs.modo }}"
+          if [ -z "$MODO" ]; then
+            if [ "${{ github.event.schedule }}" = "17 6 * * *" ]; then MODO=diario; else MODO=semanal; fi
+          fi
+          echo "Modo: $MODO"
+          node src/index.js "$MODO"
