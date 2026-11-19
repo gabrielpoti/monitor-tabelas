@@ -107,6 +107,12 @@ export async function conferirPrecos(cot, registrarMudanca) {
   }
 
   await gravar('precos', [...novos.values()], 'chave');
+  // Histórico: grava o valor do dia sempre que é novo ou mudou (alimenta os gráficos do site).
+  const historico = [...novos.values()]
+    .filter((n) => { const a = antes.get(n.chave); return !a || Number(a.valor) !== Number(n.valor); })
+    .map((n) => ({ chave: n.chave, tabela_id: n.tabela_id, plano_id: n.plano_id, uf_id: n.uf_id, faixa: n.faixa,
+      acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor }));
+  if (historico.length) await gravar('precos_historico', historico, 'chave,data');
   // remove só combinações das tabela/UF que responderam hoje e não trouxeram mais a combinação
   const remover = [...antes.values()].filter((a) => consultadas.has(`${a.tabela_id}|${a.uf_id}`) && !novos.has(a.chave)).map((a) => a.chave);
   for (let i = 0; i < remover.length; i += 200) await db.from('precos').delete().in('chave', remover.slice(i, i + 200));

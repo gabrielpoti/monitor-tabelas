@@ -4,6 +4,7 @@ export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://knvtovsrbyhpcgi
 export const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 export const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID;
+export const SITE_URL = process.env.SITE_URL || 'https://monitor-tabelas.vercel.app';
 
 export const MCP_BASE = 'https://mcp.cotadorsimplificado.com.br';
 export const MCP_URL = MCP_BASE + '/mcp';

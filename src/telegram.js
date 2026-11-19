@@ -1,4 +1,4 @@
-import { TELEGRAM_TOKEN, TELEGRAM_CHAT } from './config.js';
+import { TELEGRAM_TOKEN, TELEGRAM_CHAT, SITE_URL } from './config.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
@@ -25,7 +25,7 @@ const ROTULOS = {
   preco: '💲 Preço', novo_preco_agendado: '📅 Preço novo agendado', desconto: '🏷️ Desconto', encerrada: '⛔ Encerrada',
   combinacao_removida: '➖ Combinação removida', coparticipacao: '🧾 Coparticipação', carencia: '⏳ Carência',
   tabela_nova: '🆕 Tabela nova', tabela_removida: '🗑️ Tabela removida', tabela_voltou: '↩️ Tabela voltou', planos: '📋 Planos',
-  area_entrou: '📍 Área (entrou)', area_saiu: '📍 Área (saiu)',
+  area_entrou: '📍 Área (entrou)', area_saiu: '📍 Área (saiu)', rede: '🏥 Rede',
 };
 
 export function montarRelatorio(modo, mudancas, resumo) {
@@ -44,5 +44,6 @@ export function montarRelatorio(modo, mudancas, resumo) {
     }
   }
   if (resumo) t += `\n<i>${esc(resumo)}</i>`;
+  if (SITE_URL && mudancas.length) t += `\n\n<a href="${SITE_URL}/alteracoes">Ver alterações no site</a>`;
   return t;
 }

@@ -7,6 +7,7 @@ import { Cotador } from './cotador.js';
 import { sincronizarCidades } from './cidades.js';
 import { varrerArea } from './area.js';
 import { conferirPrecos, conferirRegras } from './diario.js';
+import { varrerRede } from './rede.js';
 import { enviar, montarRelatorio } from './telegram.js';
 import { log, minutos } from './util.js';
 
@@ -32,6 +33,7 @@ async function main() {
     }
     if (modo === 'cidades' || modo === 'semanal') resumo.cidades = await sincronizarCidades(cot);
     if (modo === 'area' || modo === 'semanal') resumo.area = await varrerArea(cot, registrarMudanca);
+    if (modo === 'rede') resumo.rede = await varrerRede(cot, registrarMudanca);
     if (modo === 'diario') {
       resumo.precos = await conferirPrecos(cot, registrarMudanca);
       resumo.regras = await conferirRegras(cot, registrarMudanca);
@@ -46,10 +48,13 @@ async function main() {
     if (modo !== 'teste') {
       const extras = [`${cot.chamadas} consultas ao cotador, ${cot.erros} com erro, ${minutos()} min`];
       if (resumo.area && !resumo.area.completa) extras.push('varredura de área continua na próxima execução');
+      if (resumo.rede?.restantes) extras.push(`rede: faltam ${resumo.rede.restantes} cidade×tabela no ciclo`);
       if (resumo.precos?.interrompido) extras.push('conferência de preços interrompida por tempo');
       if (resumo.precos?.lotesComFalha) extras.push(`${resumo.precos.lotesComFalha} lote(s) de preço falharam (mantidos os de ontem)`);
       // Na 1ª carga não há o que comparar: avisa só que a base foi montada.
-      const silencioso = modo === 'semanal' && !mudancas.length && resumo.area && !resumo.area.completa;
+      const silencioso = !mudancas.length && (
+        (modo === 'semanal' && resumo.area && !resumo.area.completa) ||
+        (modo === 'rede' && (resumo.rede?.emDia || resumo.rede?.aguardandoArea || !resumo.rede?.cicloCompleto)));
       if (!silencioso) await enviar(montarRelatorio(modo, mudancas, extras.join(' · ')));
     }
   } catch (e) {
