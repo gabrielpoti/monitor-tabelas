@@ -19,13 +19,22 @@ export class Cotador {
     this.ativas = 0;
     this.ultimaChamada = 0;
     this.pausaAte = 0;
+    this.renovando = null;
     this.errosSeguidos = 0;
     this.pausasPorLimite = 0;
     this.mensagensErro = new Map();
   }
 
   // ---------- autenticação ----------
-  async carregarToken(forcarRenovacao = false) {
+  // Uma renovação por vez: o cotador troca o refresh token a cada uso, e duas renovações
+  // simultâneas com o mesmo token fazem ele revogar o acesso (invalid_grant).
+  carregarToken(forcarRenovacao = false) {
+    if (this.renovando) return this.renovando;
+    this.renovando = this._carregarToken(forcarRenovacao).finally(() => { this.renovando = null; });
+    return this.renovando;
+  }
+
+  async _carregarToken(forcarRenovacao = false) {
     const { data: st, error } = await db.from('oauth_state').select('*').eq('id', 'cotador').single();
     if (error || !st?.refresh_token) {
       throw new Error('Monitor sem login no Cotador. Abra o link de login (cotador-auth) e autorize.');
@@ -55,12 +64,14 @@ export class Cotador {
 
   // ---------- transporte MCP (Streamable HTTP) ----------
   async rpc(method, params, { notificacao = false, tentativa = 0 } = {}) {
+    if (this.renovando) await this.renovando;
+    const tokenUsado = this.token;
     const msg = { jsonrpc: '2.0', method, ...(params ? { params } : {}) };
     if (!notificacao) msg.id = this.idSeq++;
     const headers = {
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
-      authorization: `Bearer ${this.token}`,
+      authorization: `Bearer ${tokenUsado}`,
       'mcp-protocol-version': '2025-06-18',
     };
     if (this.sessao) headers['mcp-session-id'] = this.sessao;
@@ -74,7 +85,9 @@ export class Cotador {
     }
 
     if (r.status === 401 && tentativa < 1) {
-      await this.carregarToken(true);
+      // Se outra consulta já renovou enquanto esta estava em andamento, só repete com o token novo.
+      if (this.token === tokenUsado) await this.carregarToken(true);
+      else if (this.renovando) await this.renovando;
       return this.rpc(method, params, { notificacao, tentativa: tentativa + 1 });
     }
     if (r.status === 404 && this.sessao && tentativa < 2) { // sessão expirou
