@@ -11,14 +11,19 @@ const IDADE = 31; // faixa 29 a 33 como referência
 const pctDe = (total, bruto) => (bruto > 0 && total < bruto ? Math.round((1 - total / bruto) * 1000) / 10 : 0);
 const fmtPct = (p) => (p ? `${String(p).replace('.', ',')}%` : 'sem desconto');
 
+// Diferenças de até 0,3 ponto são arredondamento de centavos, não regra diferente.
+const TOLERANCIA = 0.3;
+const arred = (p) => (Math.abs(p - Math.round(p)) <= TOLERANCIA ? Math.round(p) : Math.round(p * 10) / 10);
+
 export function montarFaixas(regra) {
   const pontos = [...regra].sort((a, b) => a.vidas - b.vidas);
   const faixas = [];
   for (const p of pontos) {
     const ult = faixas[faixas.length - 1];
-    if (ult && ult.pct === p.pct) ult.ate = p.vidas;
-    else faixas.push({ de: p.vidas, ate: p.vidas, pct: p.pct });
+    if (ult && Math.abs(ult.base - p.pct) <= TOLERANCIA) ult.ate = p.vidas;
+    else faixas.push({ de: p.vidas, ate: p.vidas, pct: arred(p.pct), base: p.pct });
   }
+  for (const f of faixas) delete f.base;
   if (faixas.length) faixas[faixas.length - 1].ate = null; // "ou mais" (testado até a maior quantidade)
   return faixas;
 }

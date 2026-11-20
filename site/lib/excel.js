@@ -5,6 +5,50 @@ import { COLS_FAIXA, FAIXAS, rotuloFaixa, slug, orIlike, dataBR, TIPOS_MUDANCA, 
 
 const AZUL = 'FF0B6BCB';
 
+// ---- desconto por quantidade: regra e explicação de como aplicar ----
+const TOL = 0.3;
+const arredPct = (p) => (Math.abs(p - Math.round(p)) <= TOL ? Math.round(p) : Math.round(p * 10) / 10);
+const fmtPct = (p) => `${String(p).replace('.', ',')}%`;
+function faixasDe(regra) {
+  const pontos = [...(regra || [])].sort((a, b) => a.vidas - b.vidas);
+  const fx = [];
+  for (const p of pontos) {
+    const u = fx[fx.length - 1];
+    if (u && Math.abs(u.base - p.pct) <= TOL) u.ate = p.vidas;
+    else fx.push({ de: p.vidas, ate: p.vidas, pct: arredPct(p.pct), base: p.pct });
+  }
+  if (fx.length) fx[fx.length - 1].ate = null;
+  return fx;
+}
+const rotQtd = (f, pessoas = true) => (f.ate === null ? `${f.de} ou mais${pessoas ? ' pessoas' : ''}` : f.de === f.ate ? `${f.de} ${f.de === 1 ? 'pessoa' : 'pessoas'}` : `${f.de} a ${f.ate} pessoas`);
+export function textoRegra(regra) {
+  const fx = faixasDe(regra);
+  if (!fx.length) return '';
+  if (fx.every((f) => !f.pct)) return 'Sem desconto por quantidade';
+  if (fx.length === 1) return `${fmtPct(fx[0].pct)} em qualquer quantidade (campanha da tabela)`;
+  return fx.map((f) => `${f.ate === null ? `${f.de} ou mais` : f.de === f.ate ? f.de : `${f.de} a ${f.ate}`}: ${f.pct ? fmtPct(f.pct) : 'sem desconto'}`).join(' · ');
+}
+export function comoAplicar(regra) {
+  const fx = faixasDe(regra);
+  if (!fx.length) return '';
+  if (fx.every((f) => !f.pct)) return 'Não há desconto por número de pessoas: cada beneficiário paga o valor da tabela.';
+  const porVidas = new Map((regra || []).map((r) => [r.vidas, r]));
+  const exemplo = (f) => {
+    const r = porVidas.get(f.de);
+    if (!r || !r.vidas) return '';
+    return r.vidas === 1
+      ? ` (ex.: 1 pessoa de 29 a 33 anos paga ${brlTxt(r.total)} em vez de ${brlTxt(r.bruto)})`
+      : ` (ex.: ${r.vidas} pessoas de 29 a 33 anos pagam ${brlTxt(r.total / r.vidas)} cada, em vez de ${brlTxt(r.bruto / r.vidas)})`;
+  };
+  if (fx.length === 1) {
+    return `Campanha da tabela: desconto de ${fmtPct(fx[0].pct)} sobre a mensalidade de todos os beneficiários, com qualquer quantidade de pessoas${exemplo(fx[0])}. Os valores da aba "Preços com desconto" já consideram esse desconto.`;
+  }
+  const partes = fx.map((f) => `com ${rotQtd(f)}, ${f.pct ? `${fmtPct(f.pct)} sobre a mensalidade de cada uma${exemplo(f)}` : 'sem desconto'}`);
+  return `O desconto depende de quantas pessoas entram no mesmo contrato e vale para todas elas: ${partes.join('; ')}.`;
+}
+const brlTxt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+
 function cabecalho(ws, linha, colunas) {
   const r = ws.getRow(linha);
   colunas.forEach((c, i) => { r.getCell(i + 1).value = c; });
@@ -93,7 +137,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   for (const l of linhas) {
     const row = ws.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
       l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto != null ? Number(l.desconto) / 100 : null,
-      descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`)?.texto || '',
+      (() => { const d = descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`); return d ? (textoRegra(d.regra) || d.texto) : ''; })(),
       l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
     row.getCell(21).numFmt = '0.0%';
@@ -106,24 +150,25 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const QTDS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30];
   const tabInfo = new Map(tabelas.map((t) => [t.id, t]));
   const wdsc = wb.addWorksheet('Descontos');
-  cabecalho(wdsc, 1, ['Operadora', 'Administradora', 'Tabela', 'Tipo', 'Plano', 'Acomodação', 'Coparticipação', 'UF', 'Regra de desconto por quantidade', 'Maior desconto',
+  cabecalho(wdsc, 1, ['Operadora', 'Administradora', 'Tabela', 'Tipo', 'Plano', 'Acomodação', 'Coparticipação', 'UF', 'Regra de desconto por quantidade', 'Como aplicar', 'Maior desconto',
     ...QTDS.map((q) => `${q} ${q === 1 ? 'pessoa' : 'pessoas'}`), 'Exemplo 29 a 33 anos: valor cheio', 'Com o maior desconto', 'Conferido em']);
   const ordenados = descontos.slice().sort((a, b) => (b.tem_desconto - a.tem_desconto) || `${a.uf}${a.tabela_id}${a.plano}`.localeCompare(`${b.uf}${b.tabela_id}${b.plano}`));
   for (const d of ordenados) {
     const t = tabInfo.get(d.tabela_id) || {};
     const porQ = new Map((d.regra || []).map((r) => [r.vidas, r]));
     const maior = (d.regra || []).reduce((m, r) => (r.pct > (m?.pct ?? -1) ? r : m), null);
-    const row = wdsc.addRow([t.operadora, t.administradora, t.nome, t.tipo_tabela, d.plano, d.acomodacao, d.coparticipacao, d.uf, d.texto,
-      d.maior_pct ? Number(d.maior_pct) / 100 : 0,
+    const row = wdsc.addRow([t.operadora, t.administradora, t.nome, t.tipo_tabela, d.plano, d.acomodacao, d.coparticipacao, d.uf, textoRegra(d.regra) || d.texto,
+      comoAplicar(d.regra), d.maior_pct ? Number(d.maior_pct) / 100 : 0,
       ...QTDS.map((q) => (porQ.has(q) ? porQ.get(q).pct / 100 : null)),
       maior ? maior.bruto / maior.vidas : null, maior ? maior.total / maior.vidas : null, d.atualizado_em ? new Date(d.atualizado_em) : null]);
-    row.getCell(10).numFmt = '0.0%';
-    for (let i = 11; i < 11 + QTDS.length; i++) row.getCell(i).numFmt = '0.0%';
-    row.getCell(11 + QTDS.length).numFmt = row.getCell(12 + QTDS.length).numFmt = '"R$" #,##0.00';
-    row.getCell(13 + QTDS.length).numFmt = 'dd/mm/yyyy';
+    row.getCell(11).numFmt = '0.0%';
+    for (let i = 12; i < 12 + QTDS.length; i++) row.getCell(i).numFmt = '0.0%';
+    row.getCell(12 + QTDS.length).numFmt = row.getCell(13 + QTDS.length).numFmt = '"R$" #,##0.00';
+    row.getCell(14 + QTDS.length).numFmt = 'dd/mm/yyyy';
   }
   if (!descontos.length) wdsc.addRow(['Descontos por quantidade ainda não conferidos para este recorte (conferência semanal, às segundas).']);
-  larguras(wdsc, [16, 14, 36, 7, 24, 12, 22, 5, 50, 10, ...QTDS.map(() => 9), 14, 14, 12]);
+  larguras(wdsc, [16, 14, 36, 7, 24, 12, 22, 5, 46, 80, 10, ...QTDS.map(() => 9), 14, 14, 12]);
+  wdsc.getColumn(10).alignment = { wrapText: true, vertical: 'top' };
 
   // Preços com desconto (campanhas e descontos da tabela, ex.: 75% na linha empresarial)
   const comDesc = (await tudo(() => s.rpc('planilha_precos', { p_grupo: grupo || null, p_cidade: cidade?.id || null, p_tipo: tipo || null, p_admin: admin || null, p_com_desconto: true })))
