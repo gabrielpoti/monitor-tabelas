@@ -17,7 +17,21 @@ export async function varrerArea(cot, registrarMudanca) {
   }
   const baseline = (await getConfig('area_baseline_ok')) !== '1'; // 1ª varredura completa não gera alertas
 
-  const tabelasAntes = new Map((await lerTudo('tabelas', 'id,nome,operadora,planos,ativa')).map((t) => [t.id, t]));
+  const tabelasAntes = new Map((await lerTudo('tabelas', 'id,nome,operadora,planos,ativa,ultima_vez')).map((t) => [t.id, t]));
+  // Planos vistos nesta varredura, por tabela: a lista final é a união de todas as cidades
+  // (uma cidade em que o cotador lista a tabela sem planos não apaga os planos vistos nas outras).
+  const planosVarredura = new Map();
+  for (const t of tabelasAntes.values()) {
+    if (t.ultima_vez && t.ultima_vez >= inicioVarredura && (t.planos || []).length) {
+      planosVarredura.set(t.id, new Map(t.planos.map((p) => [p.id, p.nome])));
+    }
+  }
+  const unirPlanos = (id, novos) => {
+    if (!planosVarredura.has(id)) planosVarredura.set(id, new Map());
+    const m = planosVarredura.get(id);
+    for (const p of novos) m.set(p.id, p.nome);
+    return [...m.entries()].map(([pid, nome]) => ({ id: pid, nome })).sort((a, b) => a.id - b.id);
+  };
   const nomesCidade = new Map(cidades.map((c) => [c.id, `${c.nome}/${c.uf}`]));
   const pendentes = cidades.filter((c) => c.id > cursor);
   log(`Área: ${pendentes.length} de ${cidades.length} cidades a varrer (baseline=${baseline})`);
@@ -37,7 +51,7 @@ export async function varrerArea(cot, registrarMudanca) {
             id: t.id, nome: t.nome, operadora_id: t.operadoraId, operadora: t.operadora,
             administradora: t.administradora, tipo_tabela: tipo, uf_id: c.uf_id,
             minimo_vidas: t.minimoVidas, exige_entidade: t.exigeEntidade,
-            planos: (t.planos || []).map((p) => ({ id: p.id, nome: p.nome })).sort((a, b) => a.id - b.id),
+            planos: unirPlanos(t.id, (t.planos || []).map((p) => ({ id: p.id, nome: p.nome }))),
             ativa: true, ultima_vez: agora,
           });
           vinculos.push({ tabela_id: t.id, cidade_id: c.id, ultima_vez: agora });
