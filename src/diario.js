@@ -29,6 +29,7 @@ export async function conferirPrecos(cot, registrarMudanca) {
   const semPreco = new Set();
   let interrompido = false;
   let lotesComFalha = 0, ultimoErro = null;
+  const gravados = new Set();
 
   for (let i = 0; i < lotes.length; i += 10) {
     if (tempoAcabou()) { interrompido = true; break; }
@@ -57,6 +58,16 @@ export async function conferirPrecos(cot, registrarMudanca) {
       }
     });
     for (const r of rs) if (r?.__erro) { lotesComFalha++; ultimoErro = r.__erro.message; }
+    // Grava a cada bloco de lotes: os preços aparecem no site aos poucos e nada se perde se a execução parar.
+    const bloco = [...novos.values()].filter((n) => !gravados.has(n.chave));
+    if (bloco.length) {
+      await gravar('precos', bloco, 'chave');
+      const hist = bloco.filter((n) => { const a = antes.get(n.chave); return !a || Number(a.valor_bruto ?? a.valor) !== Number(n.valor_bruto ?? n.valor); })
+        .map((n) => ({ chave: n.chave, tabela_id: n.tabela_id, plano_id: n.plano_id, uf_id: n.uf_id, faixa: n.faixa,
+          acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor_bruto ?? n.valor }));
+      if (hist.length) await gravar('precos_historico', hist, 'chave,data');
+      for (const n of bloco) gravados.add(n.chave);
+    }
     if ((i / 10) % 10 === 0) log(`Preços:${Math.min(i + 10, lotes.length)}/${lotes.length} lotes, ${cot.chamadas} chamadas`);
   }
   for (const u of ufs) if (!consultadas.has(`${u.tabela_id}|${u.uf_id}`)) semPreco.add(`${tabelas.get(u.tabela_id).nome} (${u.uf})`);
@@ -107,9 +118,9 @@ export async function conferirPrecos(cot, registrarMudanca) {
     }
   }
 
-  await gravar('precos', [...novos.values()], 'chave');
+  await gravar('precos', [...novos.values()].filter((n) => !gravados.has(n.chave)), 'chave');
   // Histórico: grava o valor do dia sempre que é novo ou mudou (alimenta os gráficos do site).
-  const historico = [...novos.values()]
+  const historico = [...novos.values()].filter((n) => !gravados.has(n.chave))
     .filter((n) => { const a = antes.get(n.chave); return !a || Number(a.valor_bruto ?? a.valor) !== Number(n.valor_bruto ?? n.valor); })
     .map((n) => ({ chave: n.chave, tabela_id: n.tabela_id, plano_id: n.plano_id, uf_id: n.uf_id, faixa: n.faixa,
       acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor_bruto ?? n.valor }));
