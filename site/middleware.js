@@ -4,6 +4,13 @@ import { assinatura, igual, COOKIE } from './lib/auth';
 export async function middleware(req) {
   const { pathname } = req.nextUrl;
   if (pathname === '/login' || pathname.startsWith('/api/login')) return NextResponse.next();
+  // Checagem de reserva da Vercel Cron (só dispara se o GitHub não rodou; não expõe dados).
+  if (pathname === '/api/cron') {
+    const segredo = process.env.CRON_SECRET;
+    const auth = req.headers.get('authorization') || '';
+    const ehCron = segredo ? igual(auth, `Bearer ${segredo}`) : (req.headers.get('user-agent') || '').includes('vercel-cron');
+    if (ehCron) return NextResponse.next();
+  }
   const esperado = await assinatura();
   const atual = req.cookies.get(COOKIE)?.value;
   if (esperado && igual(atual, esperado)) return NextResponse.next();
