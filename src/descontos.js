@@ -8,12 +8,13 @@ import { tempoAcabou, log, emParalelo, agrupar, doGrupo } from './util.js';
 const QUANTIDADES = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30];
 const IDADE = 31; // faixa 29 a 33 como referência
 
-const pctDe = (total, bruto) => (bruto > 0 && total < bruto ? Math.round((1 - total / bruto) * 1000) / 10 : 0);
+const pctDe = (total, bruto) => (bruto > 0 && total < bruto ? Math.round((1 - total / bruto) * 10000) / 100 : 0);
 const fmtPct = (p) => (p ? `${String(p).replace('.', ',')}%` : 'sem desconto');
 
 // Diferenças de até 0,3 ponto são arredondamento de centavos, não regra diferente.
 const TOLERANCIA = 0.3;
-const arred = (p) => (Math.abs(p - Math.round(p)) <= TOLERANCIA ? Math.round(p) : Math.round(p * 10) / 10);
+// Mostra o percentual exato (até 2 casas); só arredonda para inteiro o que é ruído de centavos.
+const arred = (p) => (Math.abs(p - Math.round(p)) <= 0.02 ? Math.round(p) : Math.round(p * 100) / 100);
 
 export function montarFaixas(regra) {
   const pontos = [...regra].sort((a, b) => a.vidas - b.vidas);

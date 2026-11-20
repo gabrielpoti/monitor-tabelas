@@ -7,10 +7,11 @@ const AZUL = 'FF0B6BCB';
 
 // ---- desconto por quantidade: regra e explicação de como aplicar ----
 const TOL = 0.3;
-const arredPct = (p) => (Math.abs(p - Math.round(p)) <= TOL ? Math.round(p) : Math.round(p * 10) / 10);
+const arredPct = (p) => (Math.abs(p - Math.round(p)) <= 0.02 ? Math.round(p) : Math.round(p * 100) / 100);
 const fmtPct = (p) => `${String(p).replace('.', ',')}%`;
 function faixasDe(regra) {
-  const pontos = [...(regra || [])].sort((a, b) => a.vidas - b.vidas);
+  const pontos = [...(regra || [])].map((r) => ({ ...r, pct: r.bruto > 0 && r.total < r.bruto ? (1 - r.total / r.bruto) * 100 : 0 }))
+    .sort((a, b) => a.vidas - b.vidas);
   const fx = [];
   for (const p of pontos) {
     const u = fx[fx.length - 1];
@@ -46,6 +47,7 @@ export function comoAplicar(regra) {
   const partes = fx.map((f) => `com ${rotQtd(f)}, ${f.pct ? `${fmtPct(f.pct)} sobre a mensalidade de cada uma${exemplo(f)}` : 'sem desconto'}`);
   return `O desconto depende de quantas pessoas entram no mesmo contrato e vale para todas elas: ${partes.join('; ')}.`;
 }
+const pctExato = (r) => (r.bruto > 0 && r.total < r.bruto ? Math.round((1 - r.total / r.bruto) * 10000) / 100 : 0);
 const brlTxt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 
@@ -140,7 +142,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
       (() => { const d = descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`); return d ? (textoRegra(d.regra) || d.texto) : ''; })(),
       l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
-    row.getCell(21).numFmt = '0.0%';
+    row.getCell(21).numFmt = '0.##%';
     row.getCell(24).numFmt = 'dd/mm/yyyy';
   }
   if (!linhas.length) ws.addRow(['Ainda não há preços conferidos para este recorte. Eles entram após a conferência diária.']);
@@ -158,11 +160,11 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
     const porQ = new Map((d.regra || []).map((r) => [r.vidas, r]));
     const maior = (d.regra || []).reduce((m, r) => (r.pct > (m?.pct ?? -1) ? r : m), null);
     const row = wdsc.addRow([t.operadora, t.administradora, t.nome, t.tipo_tabela, d.plano, d.acomodacao, d.coparticipacao, d.uf, textoRegra(d.regra) || d.texto,
-      comoAplicar(d.regra), d.maior_pct ? Number(d.maior_pct) / 100 : 0,
-      ...QTDS.map((q) => (porQ.has(q) ? porQ.get(q).pct / 100 : null)),
+      comoAplicar(d.regra), Math.max(0, ...(d.regra || []).map(pctExato)) / 100,
+      ...QTDS.map((q) => (porQ.has(q) ? pctExato(porQ.get(q)) / 100 : null)),
       maior ? maior.bruto / maior.vidas : null, maior ? maior.total / maior.vidas : null, d.atualizado_em ? new Date(d.atualizado_em) : null]);
-    row.getCell(11).numFmt = '0.0%';
-    for (let i = 12; i < 12 + QTDS.length; i++) row.getCell(i).numFmt = '0.0%';
+    row.getCell(11).numFmt = '0.##%';
+    for (let i = 12; i < 12 + QTDS.length; i++) row.getCell(i).numFmt = '0.##%';
     row.getCell(12 + QTDS.length).numFmt = row.getCell(13 + QTDS.length).numFmt = '"R$" #,##0.00';
     row.getCell(14 + QTDS.length).numFmt = 'dd/mm/yyyy';
   }
@@ -179,7 +181,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   for (const l of comDesc) {
     const row = wpd.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
       Number(l.desconto) / 100, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c])))]);
-    row.getCell(10).numFmt = '0.0%';
+    row.getCell(10).numFmt = '0.##%';
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
   }
   if (!comDesc.length) wpd.addRow(['Nenhum plano com desconto ou campanha neste recorte (ou os preços ainda não foram conferidos).']);
