@@ -34,7 +34,7 @@ export function grupoDe(op) {
   if (o.includes('clinipam')) return 'Hapvida Clinipam';
   if (o.includes('notre') || o.includes('gndi') || /interm.dica/.test(o)) return 'NotreDame';
   if (o.includes('hapvida')) return 'Hapvida';
-  if (o.includes('amil')) return 'Amil';
+  if (/\bamil\b/.test(o)) return 'Amil';
   if (o.includes('bradesco')) return 'Bradesco Saúde';
   if (/sul.?am.rica/.test(o)) return 'SulAmérica';
   if (o.includes('unimed')) return 'Unimed';

@@ -29,7 +29,7 @@ export const OPERADORAS_IDS = new Set([
   549,  // Bradesco Saúde
   11,   // SulAmérica
 ]);
-export const OPERADORAS_NOMES = /hapvida|clinipam|notre ?dame|gndi|interm[eé]dica|amil|bradesco|sul ?am[eé]rica|unimed/i;
+export const OPERADORAS_NOMES = /hapvida|clinipam|notre ?dame|gndi|interm[eé]dica|\bamil\b|bradesco|sul ?am[eé]rica|unimed/i;
 
 export const monitorada = (t) => OPERADORAS_IDS.has(t.operadoraId) || OPERADORAS_NOMES.test(t.operadora || '');
 

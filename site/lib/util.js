@@ -30,7 +30,7 @@ export function grupoDe(op) {
   if (o.includes('clinipam')) return 'Hapvida Clinipam';
   if (o.includes('notre') || o.includes('gndi') || /interm.dica/.test(o)) return 'NotreDame';
   if (o.includes('hapvida')) return 'Hapvida';
-  if (o.includes('amil')) return 'Amil';
+  if (/\bamil\b/.test(o)) return 'Amil';
   if (o.includes('bradesco')) return 'Bradesco Saúde';
   if (/sul.?am.rica/.test(o)) return 'SulAmérica';
   if (o.includes('unimed')) return 'Unimed';
@@ -40,6 +40,6 @@ export function grupoDe(op) {
 // Padrões de busca por operadora no banco (ilike), espelhando grupo_operadora() do SQL.
 export const FILTRO_GRUPO = {
   Hapvida: ['%hapvida%'], 'Hapvida Clinipam': ['%clinipam%'], NotreDame: ['%notre%', '%gndi%', '%interm%dica%'],
-  Amil: ['%amil%'], 'Bradesco Saúde': ['%bradesco%'], SulAmérica: ['%sul%am%rica%'], Unimed: ['%unimed%'],
+  Amil: ['amil%'], 'Bradesco Saúde': ['%bradesco%'], SulAmérica: ['%sul%am%rica%'], Unimed: ['%unimed%'],
 };
 export const orIlike = (grupo, col = 'operadora') => FILTRO_GRUPO[grupo].map((p) => `${col}.ilike.${p}`).join(',');
