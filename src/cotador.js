@@ -3,6 +3,7 @@
 
 import { MCP_BASE, MCP_URL, CONCORRENCIA, PAUSA_MS } from './config.js';
 import { db } from './db.js';
+import { tempoAcabou, msRestantes } from './util.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -132,8 +133,11 @@ export class Cotador {
       const real = this.ferramentas.get(norm(nome));
       if (!real) throw new Error(`Ferramenta ${nome} não existe no MCP do cotador`);
       for (let tentativa = 0; ; tentativa++) {
+        // Não começa consulta nova depois do tempo da execução: o ponto é salvo e a próxima continua.
+        if (tempoAcabou()) throw new Error('tempo da execução esgotado');
         // pausa global (quando o cotador pede para esperar, todas as consultas esperam)
-        if (this.pausaAte > Date.now()) await sleep(this.pausaAte - Date.now());
+        if (this.pausaAte > Date.now()) await sleep(Math.min(this.pausaAte - Date.now(), Math.max(0, msRestantes())));
+        if (tempoAcabou()) throw new Error('tempo da execução esgotado');
         const espera = this.ultimaChamada + PAUSA_MS - Date.now();
         if (espera > 0) await sleep(espera);
         this.ultimaChamada = Date.now();
@@ -159,7 +163,7 @@ export class Cotador {
           this.pausasPorLimite++;
           if (this.pausasPorLimite <= 20) console.log(`[cotador] limite atingido; pausando ${Math.round(pausa / 1000)}s`);
         } else {
-          await sleep(pausa);
+          await sleep(Math.min(pausa, Math.max(0, msRestantes())));
         }
       }
     } catch (e) {

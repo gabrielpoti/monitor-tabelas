@@ -2,6 +2,7 @@ import { LIMITE_MINUTOS } from './config.js';
 
 const INICIO = Date.now();
 export const tempoAcabou = () => Date.now() - INICIO > LIMITE_MINUTOS * 60 * 1000;
+export const msRestantes = () => LIMITE_MINUTOS * 60 * 1000 - (Date.now() - INICIO);
 export const minutos = () => ((Date.now() - INICIO) / 60000).toFixed(1);
 
 export const semAcento = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')

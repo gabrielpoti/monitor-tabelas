@@ -15,7 +15,7 @@ export const PAUSA_MS = Number(process.env.PAUSA_MS || 250);
 
 // Tempo máximo de uma execução antes de salvar o ponto e parar (min).
 // O GitHub Actions corta em 360 min; paramos antes para gravar o progresso.
-export const LIMITE_MINUTOS = Number(process.env.LIMITE_MINUTOS || 330);
+export const LIMITE_MINUTOS = Number(process.env.LIMITE_MINUTOS || 290);
 
 export const TIPOS_TABELA = ['PME', 'PJ', 'PF'];
 

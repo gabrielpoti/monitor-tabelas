@@ -15,6 +15,9 @@ import { log, minutos, ultimoLog } from './util.js';
 const modo = process.argv[2] || 'diario';
 
 async function main() {
+  // Execuções que ficaram "rodando" porque o GitHub cortou no limite de tempo.
+  await db.from('execucoes').update({ status: 'interrompida', fim: new Date().toISOString() })
+    .eq('status', 'rodando').lt('inicio', new Date(Date.now() - 6.5 * 3600e3).toISOString());
   const { data: exec, error } = await db.from('execucoes').insert({ modo }).select('id').single();
   if (error) throw new Error('Supabase: ' + error.message);
   const mudancas = [];
