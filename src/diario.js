@@ -2,12 +2,12 @@
 
 import { db, lerTudo, gravar } from './db.js';
 import { FAIXAS } from './config.js';
-import { tempoAcabou, log, emParalelo, agrupar, estavel, brl, pct } from './util.js';
+import { tempoAcabou, log, emParalelo, agrupar, estavel, brl, pct, doGrupo } from './util.js';
 
 const chavePreco = (x) => [x.tabela_id, x.plano_id, x.uf_id, x.faixa, x.acomodacao, x.coparticipacao, x.taxa_adesao ?? ''].join('|');
 
-export async function conferirPrecos(cot, registrarMudanca) {
-  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).map((t) => [t.id, t]));
+export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
+  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id));
   if (!ufs.length) { log('Área ainda não varrida — nada a conferir.'); return { aguardandoArea: true }; }
 
@@ -132,8 +132,8 @@ export async function conferirPrecos(cot, registrarMudanca) {
   return { precos: novos.size, tabelasUf: ufs.length, semPreco: [...semPreco], interrompido, lotesComFalha, ultimoErro };
 }
 
-export async function conferirRegras(cot, registrarMudanca) {
-  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).map((t) => [t.id, t]));
+export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
+  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = new Map((await lerTudo('tabela_uf')).map((x) => [`${x.tabela_id}|${x.uf_id}`, x]));
   const precos = await lerTudo('precos', 'tabela_id,plano_id,uf_id,tipo_tabela,coparticipacao,operadora_id');
 

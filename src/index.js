@@ -46,6 +46,16 @@ async function main() {
     if (modo === 'area' || (modo === 'semanal' && resumo.cidades?.completo)) resumo.area = await varrerArea(cot, registrarMudanca);
     if (modo === 'semanal' && !resumo.cidades?.completo) resumo.area = { completa: false, aguardandoCidades: true };
     if (modo === 'rede') resumo.rede = await varrerRede(cot, registrarMudanca);
+    if (modo === 'prioridade') {
+      // Uma operadora inteira de uma vez: preços, coparticipação, carência, descontos e rede.
+      const grupo = process.env.GRUPO;
+      if (!grupo) throw new Error('Modo prioridade precisa da operadora (campo grupo, ex.: Unimed)');
+      log(`Prioridade: ${grupo}`);
+      resumo.precos = await conferirPrecos(cot, registrarMudanca, { grupo });
+      resumo.regras = await conferirRegras(cot, registrarMudanca, { grupo });
+      resumo.descontos = await conferirDescontos(cot, registrarMudanca, { grupo });
+      resumo.rede = await varrerRede(cot, registrarMudanca, { grupo });
+    }
     if (modo === 'descontos') resumo.descontos = await conferirDescontos(cot, registrarMudanca);
     if (modo === 'diario') {
       resumo.precos = await conferirPrecos(cot, registrarMudanca);

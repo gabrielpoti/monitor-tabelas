@@ -28,3 +28,17 @@ export function agrupar(lista, chaveFn) {
   for (const x of lista) { const k = chaveFn(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
   return m;
 }
+
+export function grupoDe(op) {
+  const o = (op || '').toLowerCase();
+  if (o.includes('clinipam')) return 'Hapvida Clinipam';
+  if (o.includes('notre') || o.includes('gndi') || /interm.dica/.test(o)) return 'NotreDame';
+  if (o.includes('hapvida')) return 'Hapvida';
+  if (o.includes('amil')) return 'Amil';
+  if (o.includes('bradesco')) return 'Bradesco Saúde';
+  if (/sul.?am.rica/.test(o)) return 'SulAmérica';
+  if (o.includes('unimed')) return 'Unimed';
+  return op || 'Outras';
+}
+// Filtro opcional por operadora (modo prioridade)
+export const doGrupo = (grupo) => (t) => !grupo || grupoDe(t.operadora) === grupo;

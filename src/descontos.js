@@ -3,7 +3,7 @@
 // Roda uma vez por semana.
 
 import { lerTudo, gravar } from './db.js';
-import { tempoAcabou, log, emParalelo, agrupar } from './util.js';
+import { tempoAcabou, log, emParalelo, agrupar, doGrupo } from './util.js';
 
 const QUANTIDADES = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30];
 const IDADE = 31; // faixa 29 a 33 como referência
@@ -33,8 +33,8 @@ export function textoFaixas(faixas) {
   }).join(' · ');
 }
 
-export async function conferirDescontos(cot, registrarMudanca) {
-  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).map((t) => [t.id, t]));
+export async function conferirDescontos(cot, registrarMudanca, { grupo } = {}) {
+  const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id));
   if (!ufs.length) return { aguardandoArea: true };
   const antes = new Map((await lerTudo('descontos', 'chave,texto,tabela_id,uf')).map((d) => [d.chave, d]));

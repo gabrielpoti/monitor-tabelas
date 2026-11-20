@@ -3,33 +3,40 @@
 // depois do início do ciclo anterior.
 
 import { db, lerTudo, gravar, getConfig, setConfig } from './db.js';
-import { tempoAcabou, log, emParalelo, agrupar } from './util.js';
+import { tempoAcabou, log, emParalelo, agrupar, doGrupo } from './util.js';
 
 const CICLO_DIAS = Number(process.env.REDE_CICLO_DIAS || 90);
 const UFS_PRIORITARIAS = (process.env.REDE_UFS_PRIORITARIAS || 'CE,SP,RJ').split(',').map((s) => s.trim().toUpperCase());
 const TIPOS_DIVIDIR =['hosp', 'ps', 'lab', 'cli', 'img', 'cons', 'odonto', 'outros'];
 
-export async function varrerRede(cot, registrarMudanca) {
-  if ((await getConfig('area_baseline_ok')) !== '1') {
-    log('Rede: aguardando a 1ª varredura completa da área.');
-    return { aguardandoArea: true };
-  }
-  let inicio = await getConfig('rede_inicio');
-  const ultimoInicio = await getConfig('rede_ultimo_inicio');
-  if (!inicio) {
-    if (ultimoInicio && Date.now() - new Date(ultimoInicio).getTime() < CICLO_DIAS * 864e5) {
-      const prox = new Date(new Date(ultimoInicio).getTime() + CICLO_DIAS * 864e5);
-      log(`Rede: ciclo em dia; próximo começa em ${prox.toISOString().slice(0, 10)}`);
-      return { emDia: true, proximoCiclo: prox.toISOString().slice(0, 10) };
+export async function varrerRede(cot, registrarMudanca, { grupo } = {}) {
+  // Modo prioridade (uma operadora): percorre todas as cidades dela com um ponto de parada próprio,
+  // sem mexer no ciclo geral de 90 dias.
+  const prio = !!grupo;
+  const chaveCursor = prio ? `rede_prio_${grupo.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_cursor` : 'rede_cursor';
+  let inicio = null;
+  if (!prio) {
+    if ((await getConfig('area_baseline_ok')) !== '1') {
+      log('Rede: aguardando a 1ª varredura completa da área.');
+      return { aguardandoArea: true };
     }
-    inicio = new Date().toISOString();
-    await setConfig('rede_inicio', inicio);
-    await setConfig('rede_cursor', '');
+    inicio = await getConfig('rede_inicio');
+    const ultimoInicio = await getConfig('rede_ultimo_inicio');
+    if (!inicio) {
+      if (ultimoInicio && Date.now() - new Date(ultimoInicio).getTime() < CICLO_DIAS * 864e5) {
+        const prox = new Date(new Date(ultimoInicio).getTime() + CICLO_DIAS * 864e5);
+        log(`Rede: ciclo em dia; próximo começa em ${prox.toISOString().slice(0, 10)}`);
+        return { emDia: true, proximoCiclo: prox.toISOString().slice(0, 10) };
+      }
+      inicio = new Date().toISOString();
+      await setConfig('rede_inicio', inicio);
+      await setConfig('rede_cursor', '');
+    }
   }
-  const cursor = (await getConfig('rede_cursor')) || '';
+  const cursor = (await getConfig(chaveCursor)) || '';
 
   // Lista de trabalho: cada (cidade, tabela) com seus planos, em ordem estável.
-  const tabelas = new Map((await lerTudo('tabelas', 'id,nome,operadora,operadora_id,planos', (q) => q.eq('ativa', true))).map((t) => [t.id, t]));
+  const tabelas = new Map((await lerTudo('tabelas', 'id,nome,operadora,operadora_id,planos', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const cidades = new Map((await lerTudo('cidades', 'id,nome,uf,uf_id')).map((c) => [c.id, c]));
   // Ordem do ciclo: UFs prioritárias primeiro (CE, SP, RJ), depois o resto do Brasil.
   const prioridade = (uf) => { const i = UFS_PRIORITARIAS.indexOf(uf); return i === -1 ? 9 : i; };
@@ -37,7 +44,13 @@ export async function varrerRede(cot, registrarMudanca) {
     .filter((v) => tabelas.has(v.tabela_id) && cidades.has(v.cidade_id))
     .map((v) => ({ ...v, k: `${prioridade(cidades.get(v.cidade_id).uf)}|${String(v.cidade_id).padStart(7, '0')}|${String(v.tabela_id).padStart(7, '0')}` }))
     .sort((a, b) => (a.k < b.k ? -1 : 1));
-  const pendentes = vinculos.filter((v) => v.k > cursor);
+  // No ciclo geral, pula o que já foi coletado há pouco (ex.: pela prioridade de uma operadora).
+  const recentes = new Set();
+  if (!prio) {
+    const desde = new Date(Date.now() - 30 * 864e5).toISOString();
+    for (const r of await lerTudo('rede', 'tabela_id,cidade_id', (q) => q.gte('atualizado_em', desde))) recentes.add(`${r.tabela_id}|${r.cidade_id}`);
+  }
+  const pendentes = vinculos.filter((v) => v.k > cursor && !recentes.has(`${v.tabela_id}|${v.cidade_id}`));
   const baseline = (await getConfig('rede_baseline_ok')) !== '1';
   log(`Rede: ${pendentes.length} de ${vinculos.length} (cidade×tabela) pendentes no ciclo (baseline=${baseline})`);
 
@@ -113,14 +126,18 @@ export async function varrerRede(cot, registrarMudanca) {
     // avança o cursor só até o último item contínuo que deu certo
     let ultimo = null;
     for (const v of lote) { if (!v.ok) break; ultimo = v.k; }
-    if (ultimo) await setConfig('rede_cursor', ultimo);
+    if (ultimo) await setConfig(chaveCursor, ultimo);
     feitos += lote.filter((v) => v.ok).length;
     if (lote.some((v) => !v.ok)) { log('Rede: falha num lote; retoma daqui na próxima execução'); break; }
     if ((i / 30) % 10 === 0) log(`Rede: ${i + lote.length}/${pendentes.length}, ${cot.chamadas} chamadas`);
   }
 
-  const cursorFinal = (await getConfig('rede_cursor')) || '';
-  const restantes = vinculos.filter((v) => v.k > cursorFinal).length;
+  const cursorFinal = (await getConfig(chaveCursor)) || '';
+  const restantes = vinculos.filter((v) => v.k > cursorFinal && !recentes.has(`${v.tabela_id}|${v.cidade_id}`)).length;
+  if (prio) {
+    if (restantes === 0) await setConfig(chaveCursor, '');
+    return { grupo, completo: restantes === 0, feitos, restantes };
+  }
   if (restantes === 0) {
     await setConfig('rede_ultimo_inicio', inicio);
     await setConfig('rede_inicio', null);
