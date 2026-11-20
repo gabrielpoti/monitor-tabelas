@@ -15,7 +15,8 @@ export default async function Grupo({ params, searchParams }) {
   const ufs = [...new Set(todas.flatMap((t) => t.ufs || []))].sort();
   const busca = (sp.q || '').toLowerCase();
   const lista = todas.filter((t) => (sp.inativas ? true : t.ativa)
-    && (!sp.tipo || t.tipo_tabela === sp.tipo) && (!sp.admin || t.administradora === sp.admin)
+    && (!sp.tipo || t.tipo_tabela === sp.tipo)
+    && (!sp.admin || (sp.admin === '__administradoras__' ? t.administradora !== 'direto' : t.administradora === sp.admin))
     && (!sp.uf || (t.ufs || []).includes(sp.uf))
     && (!busca || t.nome.toLowerCase().includes(busca) || (t.planos || []).some((p) => p.nome.toLowerCase().includes(busca))));
 
@@ -27,7 +28,7 @@ export default async function Grupo({ params, searchParams }) {
       <form className="filtros" method="get">
         <label>Buscar<input name="q" defaultValue={sp.q || ''} placeholder="tabela ou plano" /></label>
         <label>Tipo<select name="tipo" defaultValue={sp.tipo || ''}><option value="">Todos</option><option>PME</option><option>PJ</option><option>PF</option></select></label>
-        <label>Administradora<select name="admin" defaultValue={sp.admin || ''}><option value="">Todas</option>{admins.map((a) => <option key={a}>{a}</option>)}</select></label>
+        <label>Administradora<select name="admin" defaultValue={sp.admin || ''}><option value="">Todas (direto + administradoras)</option><option value="direto">Só direto da operadora</option><option value="__administradoras__">Só administradoras (todas)</option>{admins.filter((a) => a !== 'direto').map((a) => <option key={a}>{a}</option>)}</select></label>
         <label>UF<select name="uf" defaultValue={sp.uf || ''}><option value="">Todas</option>{ufs.map((u) => <option key={u}>{u}</option>)}</select></label>
         <label className="linha" style={{ display: 'flex' }}><input type="checkbox" name="inativas" value="1" defaultChecked={!!sp.inativas} /> incluir removidas</label>
         <button type="submit">Filtrar</button>

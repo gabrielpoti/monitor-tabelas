@@ -100,7 +100,8 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
     let q = s.from('v_tabelas').select('id,nome,operadora,grupo,administradora,tipo_tabela,minimo_vidas,exige_entidade,planos,ufs,cidades').eq('ativa', true);
     if (grupo) q = q.eq('grupo', grupo);
     if (tipo) q = q.eq('tipo_tabela', tipo);
-    if (admin) q = q.eq('administradora', admin);
+    if (admin === '__administradoras__') q = q.neq('administradora', 'direto');
+    else if (admin) q = q.eq('administradora', admin);
     return q.order('nome');
   };
   let tabelas = await tudo(qt);
@@ -115,7 +116,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Monitor de Tabelas';
-  const recorte = `${grupo || 'Todas as operadoras'} — ${cidade ? `${cidade.nome}/${cidade.uf}` : 'todas as cidades'}${tipo ? ` — ${tipo}` : ''}${admin ? ` — ${admin}` : ''}`;
+  const recorte = `${grupo || 'Todas as operadoras'} — ${cidade ? `${cidade.nome}/${cidade.uf}` : 'todas as cidades'}${tipo ? ` — ${tipo}` : ''}${admin ? ` — ${admin === '__administradoras__' ? 'administradoras' : admin === 'direto' ? 'direto da operadora' : admin}` : ''}`;
   const hoje = dataBR(new Date());
 
   // Descontos por quantidade de vidas (conferidos semanalmente)
@@ -253,7 +254,8 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   }
   larguras(wr, [36, 24, 20, 48, 8, 20, 12]);
 
-  const nome = `precos-${slug(grupo || 'todas')}-${cidade ? slug(cidade.nome) + '-' + cidade.uf.toLowerCase() : 'todas-cidades'}.xlsx`;
+  const sufAdmin = admin === '__administradoras__' ? '-administradoras' : admin ? `-${slug(admin)}` : '';
+  const nome = `precos-${slug(grupo || 'todas')}${sufAdmin}-${cidade ? slug(cidade.nome) + '-' + cidade.uf.toLowerCase() : 'todas-cidades'}.xlsx`;
   return { buffer: await wb.xlsx.writeBuffer(), nome };
 }
 
