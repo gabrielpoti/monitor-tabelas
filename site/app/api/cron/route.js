@@ -18,7 +18,7 @@ export async function GET(req) {
 
   // 1) Já existe execução desse modo recente no banco?
   const desde = new Date(Date.now() - JANELA_H[modo] * 3600e3).toISOString();
-  const { data: recentes } = await db().from('execucoes').select('id,status,inicio').eq('modo', modo).gte('inicio', desde).limit(1);
+  const { data: recentes } = await db().from('execucoes').select('id,status,inicio').eq('modo', modo).in('status', ['ok', 'rodando']).gte('inicio', desde).limit(1);
   if (recentes?.length) return NextResponse.json({ ok: true, acao: 'nada', motivo: `já rodou (#${recentes[0].id})` });
 
   // 2) Há execução na fila ou rodando no GitHub? (pode ser o agendamento esperando outra terminar)
