@@ -16,6 +16,9 @@ concurrency:
   group: exportar-planilha
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   exportar:
     runs-on: ubuntu-latest
@@ -31,8 +34,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GRUPO: ${{ github.event.inputs.grupo }}
         run: node src/exportar-${{ github.event.inputs.tipo }}.js
-      - uses: actions/upload-artifact@v4
-        with:
-          name: planilha
-          path: saida/*.xlsx
-          retention-days: 3
+      - name: Guardar no ramo exportacoes
+        run: |
+          git config user.name "monitor-tabelas"
+          git config user.email "monitor-tabelas@users.noreply.github.com"
+          mv saida /tmp/saida
+          git fetch origin exportacoes || true
+          if git rev-parse --verify origin/exportacoes >/dev/null 2>&1; then git checkout -B exportacoes origin/exportacoes; else git checkout --orphan exportacoes && git rm -rf -q . ; fi
+          cp /tmp/saida/*.xlsx .
+          git add *.xlsx
+          git commit -qm "Exportação ${{ github.event.inputs.tipo }} ${{ github.event.inputs.grupo }}" || true
+          git push -q origin exportacoes
