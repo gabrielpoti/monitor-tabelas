@@ -91,6 +91,27 @@ export async function resolverCidade(nome, uf) {
   return data?.[0] || null;
 }
 
+// Valores que parecem erro de cadastro no Cotador (o sistema não altera nada, só aponta).
+export function suspeitasDe(l) {
+  const v = COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c])));
+  const out = [];
+  for (let i = 1; i < v.length; i++) {
+    if (v[i] == null || v[i - 1] == null) continue;
+    if (v[i] < v[i - 1] * 0.98) out.push({ col: i, motivo: `${rotuloFaixa(FAIXAS[i])} (${brlTxt(v[i])}) é menor que a faixa anterior (${brlTxt(v[i - 1])})` });
+    else if (v[i] > v[i - 1] * 3) out.push({ col: i, motivo: `${rotuloFaixa(FAIXAS[i])} (${brlTxt(v[i])}) é mais de 3x a faixa anterior (${brlTxt(v[i - 1])})` });
+  }
+  if (v[0] && v[9] && v[9] / v[0] > 6.005) out.push({ col: 9, motivo: `${rotuloFaixa(FAIXAS[9])} é ${(v[9] / v[0]).toFixed(2).replace('.', ',')}x a primeira faixa (limite da ANS: 6x)` });
+  return out;
+}
+const AMARELO = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2A8' } };
+
+// Planos com o mesmo nome dentro da mesma tabela/UF recebem o código para não confundir.
+function nomesDePlano(linhas) {
+  const ids = new Map();
+  for (const l of linhas) { const k = `${l.tabela_id}|${l.uf}|${l.plano}`; if (!ids.has(k)) ids.set(k, new Set()); ids.get(k).add(l.plano_id); }
+  return (l) => (ids.get(`${l.tabela_id}|${l.uf}|${l.plano}`)?.size > 1 ? `${l.plano} (cód. ${l.plano_id})` : l.plano);
+}
+
 export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const s = db();
   const linhas = await tudo(() => s.rpc('planilha_precos', { p_grupo: grupo || null, p_cidade: cidade?.id || null, p_tipo: tipo || null, p_admin: admin || null }));
@@ -137,17 +158,42 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const cols = ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'Mín. vidas', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'Taxa de adesão',
     ...FAIXAS.map(rotuloFaixa), 'Desconto (%)', 'Desconto por quantidade de vidas', 'Encerrada', 'Preço novo em'];
   cabecalho(ws, 4, cols);
+  const plano = nomesDePlano(linhas);
+  const conferir = [];
   for (const l of linhas) {
-    const row = ws.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
+    const row = ws.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, plano(l), l.acomodacao, l.coparticipacao,
       l.taxa_adesao, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c]))), l.desconto != null ? Number(l.desconto) / 100 : null,
       (() => { const d = descPorLinha.get(`${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`); return d ? (textoRegra(d.regra) || d.texto) : ''; })(),
       l.encerrada ? 'Sim' : '', l.novo_preco_em ? new Date(l.novo_preco_em) : null]);
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
     row.getCell(21).numFmt = '0.##%';
     row.getCell(24).numFmt = 'dd/mm/yyyy';
+    const sus = suspeitasDe(l);
+    for (const x of sus) { const c = row.getCell(11 + x.col); c.fill = AMARELO; c.note = `Conferir: ${x.motivo}. Valor igual ao do Cotador Simplificado.`; }
+    if (sus.length) conferir.push({ l, sus });
   }
   if (!linhas.length) ws.addRow(['Ainda não há preços conferidos para este recorte. Eles entram após a conferência diária.']);
   larguras(ws, [16, 38, 14, 7, 8, 5, 26, 13, 24, 10, ...FAIXAS.map(() => 11), 10, 44, 10, 12]);
+
+  // Aba Conferir: valores com cara de erro de cadastro e planos repetidos
+  const repetidos = new Map();
+  for (const l of linhas) { const k = `${l.tabela_id}|${l.uf}|${l.plano}|${l.acomodacao}|${l.coparticipacao}`; if (!repetidos.has(k)) repetidos.set(k, []); repetidos.get(k).push(l); }
+  const dup = [...repetidos.values()].filter((ls) => new Set(ls.map((x) => x.plano_id)).size > 1);
+  if (conferir.length || dup.length) {
+    const wq = wb.addWorksheet('Conferir');
+    titulo(wq, `Valores para conferir — ${recorte}`, 'Os valores são exatamente os do Cotador Simplificado. Estes parecem erro de cadastro: confirme com a operadora/administradora antes de usar. Na aba Preços as células estão em amarelo.', false);
+    cabecalho(wq, 4, ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'O que parece errado', ...FAIXAS.map(rotuloFaixa)]);
+    const add = (l, motivo, cols) => {
+      const row = wq.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.uf, plano(l), l.acomodacao, l.coparticipacao, motivo,
+        ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c])))]);
+      for (let i = 10; i <= 19; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
+      for (const c of cols) row.getCell(10 + c).fill = AMARELO;
+    };
+    for (const { l, sus } of conferir) add(l, sus.map((x) => x.motivo).join('; '), sus.map((x) => x.col));
+    for (const ls of dup) for (const l of ls) add(l, `Plano "${l.plano}" aparece ${ls.length} vezes nesta tabela com preços diferentes (códigos ${ls.map((x) => x.plano_id).join(' e ')}); o Cotador não diz a diferença`, []);
+    larguras(wq, [16, 36, 14, 7, 5, 28, 13, 22, 60, ...FAIXAS.map(() => 11)]);
+    wq.getColumn(9).alignment = { wrapText: true, vertical: 'top' };
+  }
 
   // Aba Descontos: regra por quantidade de vidas, uma linha por plano/acomodação/coparticipação
   const QTDS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30];
@@ -180,7 +226,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   titulo(wpd, `Preços com desconto — ${recorte}`, `Somente planos com desconto ou campanha ativa no cotador em ${hoje}. O cotador não informa a validade da campanha.`, false);
   cabecalho(wpd, 4, ['Operadora', 'Tabela', 'Administradora', 'Tipo', 'Mín. vidas', 'UF', 'Plano', 'Acomodação', 'Coparticipação', 'Desconto (%)', ...FAIXAS.map(rotuloFaixa)]);
   for (const l of comDesc) {
-    const row = wpd.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, l.plano, l.acomodacao, l.coparticipacao,
+    const row = wpd.addRow([l.operadora, l.tabela, l.administradora, l.tipo_tabela, l.minimo_vidas, l.uf, plano(l), l.acomodacao, l.coparticipacao,
       Number(l.desconto) / 100, ...COLS_FAIXA.map((c) => (l[c] == null ? null : Number(l[c])))]);
     row.getCell(10).numFmt = '0.##%';
     for (let i = 11; i <= 20; i++) row.getCell(i).numFmt = '"R$" #,##0.00';
