@@ -12,8 +12,11 @@
     "teste": "node src/index.js teste",
     "check": "node --check src/*.js"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "exceljs": "^4.4.0"
   }
 }
