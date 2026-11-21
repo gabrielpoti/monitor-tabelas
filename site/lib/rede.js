@@ -49,7 +49,7 @@ export async function planilhaRede(f) {
   cabecalho(ws, ['Operadora', 'Administradora', 'Tabela', 'Tipo de tabela', 'Plano', 'UF', 'Cidade', 'Local de atendimento', 'Tipo de atendimento', 'Cobertura (como no cadastro)', 'Atualizado em'],
     [16, 14, 38, 9, 26, 5, 24, 46, 18, 22, 12]);
   for (const l of linhas) {
-    const r = ws.addRow([l.grupo, l.administradora, l.tabela, l.tipo_tabela, l.plano, l.uf, l.cidade, l.local, tipoLocal(l.tipo), l.cobertura, l.atualizado_em ? new Date(l.atualizado_em) : null]);
+    const r = ws.addRow([l.operadora || l.grupo, l.administradora, l.tabela, l.tipo_tabela, l.plano, l.uf, l.cidade, l.local, tipoLocal(l.tipo), l.cobertura, l.atualizado_em ? new Date(l.atualizado_em) : null]);
     r.getCell(11).numFmt = 'dd/mm/yyyy';
   }
   if (!linhas.length) ws.addRow(['Nenhum local encontrado com esses filtros (ou a rede desta região ainda não foi coletada).']);
@@ -66,7 +66,7 @@ export async function planilhaRede(f) {
   cabecalho(wr, ['Operadora', 'Administradora', 'Tabela', 'Tipo de tabela', 'Plano', 'UF', 'Cidade', 'Total de locais', ...tiposVistos.map(tipoLocal)],
     [16, 14, 38, 9, 26, 5, 24, 10, ...tiposVistos.map(() => 13)]);
   for (const x of [...resumo.values()].sort((a, b) => `${a.uf}${a.cidade}${a.grupo}${a.plano}`.localeCompare(`${b.uf}${b.cidade}${b.grupo}${b.plano}`))) {
-    wr.addRow([x.grupo, x.administradora, x.tabela, x.tipo_tabela, x.plano, x.uf, x.cidade, x.total, ...tiposVistos.map((t) => x.porTipo[t] || 0)]);
+    wr.addRow([x.operadora || x.grupo, x.administradora, x.tabela, x.tipo_tabela, x.plano, x.uf, x.cidade, x.total, ...tiposVistos.map((t) => x.porTipo[t] || 0)]);
   }
 
   // 3) Por local: cada hospital/clínica e todos os planos que atendem nele

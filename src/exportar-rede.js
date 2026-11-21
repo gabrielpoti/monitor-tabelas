@@ -45,14 +45,14 @@ const ws = wb.addWorksheet('Rede');
 cabecalho(ws, ['Operadora', 'Administradora', 'Tabela', 'Tipo de tabela', 'Plano', 'UF', 'Cidade', 'Local de atendimento', 'Tipo de atendimento', 'Cobertura (como no cadastro)', 'Atualizado em'],
   [16, 14, 38, 9, 26, 5, 24, 46, 18, 22, 12]);
 for (const l of linhas) {
-  const r = ws.addRow([l.grupo, l.administradora, l.tabela, l.tipo_tabela, l.plano, l.uf, l.cidade, l.local, tipoLocal(l.tipo), l.cobertura, l.atualizado_em ? new Date(l.atualizado_em) : null]);
+  const r = ws.addRow([l.operadora || l.grupo, l.administradora, l.tabela, l.tipo_tabela, l.plano, l.uf, l.cidade, l.local, tipoLocal(l.tipo), l.cobertura, l.atualizado_em ? new Date(l.atualizado_em) : null]);
   r.getCell(11).numFmt = 'dd/mm/yyyy';
 }
 
 const tiposVistos = [...new Set(linhas.map((l) => l.tipo))].sort();
 const resumo = new Map();
 for (const l of linhas) {
-  const k = `${l.grupo}|${l.administradora}|${l.tabela}|${l.plano}|${l.uf}|${l.cidade}`;
+  const k = `${l.operadora}|${l.administradora}|${l.tabela}|${l.plano}|${l.uf}|${l.cidade}`;
   if (!resumo.has(k)) resumo.set(k, { ...l, total: 0, porTipo: {} });
   const x = resumo.get(k); x.total++; x.porTipo[l.tipo] = (x.porTipo[l.tipo] || 0) + 1;
 }
@@ -60,7 +60,7 @@ const wr = wb.addWorksheet('Resumo por plano');
 cabecalho(wr, ['Operadora', 'Administradora', 'Tabela', 'Tipo de tabela', 'Plano', 'UF', 'Cidade', 'Total de locais', ...tiposVistos.map(tipoLocal)],
   [16, 14, 38, 9, 26, 5, 24, 10, ...tiposVistos.map(() => 13)]);
 for (const x of [...resumo.values()]) {
-  wr.addRow([x.grupo, x.administradora, x.tabela, x.tipo_tabela, x.plano, x.uf, x.cidade, x.total, ...tiposVistos.map((t) => x.porTipo[t] || 0)]);
+  wr.addRow([x.operadora || x.grupo, x.administradora, x.tabela, x.tipo_tabela, x.plano, x.uf, x.cidade, x.total, ...tiposVistos.map((t) => x.porTipo[t] || 0)]);
 }
 
 const porLocal = new Map();
