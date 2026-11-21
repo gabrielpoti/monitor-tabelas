@@ -26,6 +26,7 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
   const agora = new Date().toISOString();
   const novos = new Map();
   const consultadas = new Set(); // tabela|uf que responderam
+  const planosConsultados = new Set(); // tabela|uf|plano consultados com sucesso
   const semPreco = new Set();
   let interrompido = false;
   let lotesComFalha = 0, ultimoErro = null;
@@ -54,6 +55,7 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
           linha.chave = chavePreco(linha);
           novos.set(linha.chave, linha);
           consultadas.add(`${it.tabelaId}|${lote.ufId}`);
+          planosConsultados.add(`${it.tabelaId}|${lote.ufId}|${it.planoId}`);
         }
       }
     });
@@ -111,7 +113,8 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
         descricao: `${nome}: desconto/campanha mudou em ${descontos.length} combinação(ões) — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: ${ex.a.desconto != null ? ex.a.desconto + '%' : 'sem desconto'} → ${ex.n.desconto != null ? ex.n.desconto + '%' : 'sem desconto'} (valor com desconto R$ ${brl(ex.n.valor)})` });
     }
     // combinações que existiam e sumiram (só se a tabela respondeu hoje)
-    const sumiram = [...antes.values()].filter((a) => `${a.tabela_id}|${a.uf_id}` === k && !novos.has(a.chave));
+    const sumiram = [...antes.values()].filter((a) => `${a.tabela_id}|${a.uf_id}` === k && !novos.has(a.chave)
+      && planosConsultados.has(`${a.tabela_id}|${a.uf_id}|${a.plano_id}`));
     if (sumiram.length) {
       registrarMudanca({ ...base, tipo: 'combinacao_removida', chave: k,
         descricao: `${nome}: ${sumiram.length} combinação(ões) de preço saíram (${[...new Set(sumiram.map((x) => `${x.plano} ${x.acomodacao} ${x.coparticipacao}`))].slice(0, 4).join('; ')})` });
@@ -126,7 +129,7 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
       acomodacao: n.acomodacao, coparticipacao: n.coparticipacao, valor: n.valor_bruto ?? n.valor }));
   if (historico.length) await gravar('precos_historico', historico, 'chave,data');
   // remove só combinações das tabela/UF que responderam hoje e não trouxeram mais a combinação
-  const remover = [...antes.values()].filter((a) => consultadas.has(`${a.tabela_id}|${a.uf_id}`) && !novos.has(a.chave)).map((a) => a.chave);
+  const remover = [...antes.values()].filter((a) => planosConsultados.has(`${a.tabela_id}|${a.uf_id}|${a.plano_id}`) && !novos.has(a.chave)).map((a) => a.chave);
   for (let i = 0; i < remover.length; i += 200) await db.from('precos').delete().in('chave', remover.slice(i, i + 200));
 
   return { precos: novos.size, tabelasUf: ufs.length, semPreco: [...semPreco], interrompido, lotesComFalha, ultimoErro };
@@ -176,14 +179,28 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
       });
     }
     // comparação agrupada por tabela/UF
-    const mudou = linhas.filter((l) => {
-      const a = antes.get(l.chave);
-      if (!a) return false;
-      const idA = tipo === 'coparticipacao' ? a.copart_tab_id : a.carencia_id;
-      const idN = tipo === 'coparticipacao' ? l.copart_tab_id : l.carencia_id;
-      return idA !== idN || estavel(a.itens) !== estavel(l.itens) || a.vigencia_fim !== l.vigencia_fim
-        || (tipo === 'carencia' && estavel(a.regras_aceitacao) !== estavel(l.regras_aceitacao));
-    });
+    const instante = (d) => (d ? new Date(d).getTime() : null);
+    const lista = (x) => (Array.isArray(x) && x.length ? estavel(x) : '');
+    const idDe = (x) => (tipo === 'coparticipacao' ? x?.copart_tab_id : x?.carencia_id) ?? null;
+    const difere = (a, l) => idDe(a) !== idDe(l) || lista(a.itens) !== lista(l.itens) || instante(a.vigencia_fim) !== instante(l.vigencia_fim)
+      || (tipo === 'carencia' && lista(a.regras_aceitacao) !== lista(l.regras_aceitacao));
+    let mudou = linhas.filter((l) => { const a = antes.get(l.chave); return a && difere(a, l); });
+
+    // Quem "perdeu" a tabela vigente numa consulta em lote é conferido de novo, um a um, antes de virar alerta.
+    const perderam = mudou.filter((l) => idDe(antes.get(l.chave)) && !idDe(l));
+    for (const l of perderam) {
+      if (tempoAcabou()) break;
+      try {
+        const d = await fn([limpar(l._p)]);
+        const v = (d?.tabelas || []).find((x) => x.produtoIndice === 0);
+        if (v) {
+          Object.assign(l, { nome: v.nome ?? null, vigencia_inicio: v.vigenciaInicio ?? null, vigencia_fim: v.vigenciaFim ?? null, itens: v.itens ?? null });
+          if (tipo === 'coparticipacao') Object.assign(l, { copart_tab_id: v.copartTabId ?? null, descricao: v.descricao ?? null });
+          else Object.assign(l, { carencia_id: v.carenciaId ?? null, regras_aceitacao: v.regrasAceitacao ?? null });
+        }
+      } catch { const a = antes.get(l.chave); Object.assign(l, { ...a, atualizado_em: l.atualizado_em, _p: l._p }); }
+    }
+    mudou = mudou.filter((l) => difere(antes.get(l.chave), l));
     for (const [k, ls] of agrupar(mudou, (l) => `${l.tabela_id}|${l.uf_id}`)) {
       const p = ls[0]._p; const a = antes.get(ls[0].chave);
       const rotulo = tipo === 'coparticipacao' ? 'Coparticipação' : 'Carência';
