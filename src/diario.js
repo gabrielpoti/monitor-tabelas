@@ -162,7 +162,11 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
     const entradas = [...mapa.entries()];
     const linhas = [];
     const lotes = [];
-    for (let i = 0; i < entradas.length; i += 10) lotes.push(entradas.slice(i, i + 10));
+    // O Cotador só responde direito quando todos os produtos do lote são da mesma tabela/UF:
+    // misturando tabelas, parte dos produtos volta sem nada. Por isso o lote é montado por tabela/UF.
+    for (const [, grupo] of agrupar(entradas, ([, p]) => `${p.tabelaId}|${p.ufId}`)) {
+      for (let i = 0; i < grupo.length; i += 10) lotes.push(grupo.slice(i, i + 10));
+    }
     for (let i = 0; i < lotes.length && !tempoAcabou(); i += 10) {
       await emParalelo(lotes.slice(i, i + 10), async (lote) => {
         const d = await fn(lote.map(([, p]) => limpar(p)));

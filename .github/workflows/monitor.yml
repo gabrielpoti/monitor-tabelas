@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'diario, semanal, rede, descontos, prioridade, cidades, area ou teste'
+        description: 'diario, semanal, rede, descontos, regras, prioridade, cidades, area ou teste'
         required: true
         default: 'teste'
       grupo:
-        description: 'só no modo prioridade: Hapvida, Hapvida Clinipam, NotreDame, Amil, Bradesco Saúde, SulAmérica ou Unimed'
+        description: 'modo prioridade (obrigatório) ou regras (opcional): Hapvida, Hapvida Clinipam, NotreDame, Amil, Bradesco Saúde, SulAmérica ou Unimed'
         required: false
         default: ''
 

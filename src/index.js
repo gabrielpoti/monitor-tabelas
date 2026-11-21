@@ -56,6 +56,7 @@ async function main() {
       resumo.descontos = await conferirDescontos(cot, registrarMudanca, { grupo });
       resumo.rede = await varrerRede(cot, registrarMudanca, { grupo });
     }
+    if (modo === 'regras') resumo.regras = await conferirRegras(cot, registrarMudanca, process.env.GRUPO ? { grupo: process.env.GRUPO } : {});
     if (modo === 'descontos') resumo.descontos = await conferirDescontos(cot, registrarMudanca);
     if (modo === 'diario') {
       resumo.precos = await conferirPrecos(cot, registrarMudanca);
