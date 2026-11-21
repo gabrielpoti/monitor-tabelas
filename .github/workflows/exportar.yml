@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       tipo:
-        description: 'rede'
+        description: 'rede ou precos'
         required: true
         default: 'rede'
       grupo:
         description: 'Operadora (ex.: Unimed). Vazio = todas'
+        required: false
+        default: ''
+      admin:
+        description: 'só precos: vazio (todas), direto ou __administradoras__'
         required: false
         default: ''
 
@@ -32,8 +36,17 @@ jobs:
       - name: Gerar planilha
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GRUPO: ${{ github.event.inputs.grupo }}
-        run: node src/exportar-${{ github.event.inputs.tipo }}.js
+          ADMIN: ${{ github.event.inputs.admin }}
+        run: |
+          if [ "${{ github.event.inputs.tipo }}" = "precos" ]; then
+            cd site && npm ci --no-audit --no-fund
+            npx -y esbuild scripts/exportar-precos.mjs --bundle --platform=node --format=esm --conditions=react-server --packages=external --outfile=scripts/.exp.mjs --log-level=warning
+            SAIDA=../saida node --conditions=react-server scripts/.exp.mjs
+          else
+            node src/exportar-${{ github.event.inputs.tipo }}.js
+          fi
       - name: Guardar no ramo exportacoes
         run: |
           git config user.name "monitor-tabelas"
