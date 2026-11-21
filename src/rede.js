@@ -44,9 +44,9 @@ export async function varrerRede(cot, registrarMudanca, { grupo } = {}) {
     .filter((v) => tabelas.has(v.tabela_id) && cidades.has(v.cidade_id))
     .map((v) => ({ ...v, k: `${prioridade(cidades.get(v.cidade_id).uf)}|${String(v.cidade_id).padStart(7, '0')}|${String(v.tabela_id).padStart(7, '0')}` }))
     .sort((a, b) => (a.k < b.k ? -1 : 1));
-  // No ciclo geral, pula o que já foi coletado há pouco (ex.: pela prioridade de uma operadora).
+  // Pula o que já foi coletado há pouco (no ciclo geral ou numa prioridade anterior): não refaz rede recente.
   const recentes = new Set();
-  if (!prio) {
+  {
     const desde = new Date(Date.now() - 30 * 864e5).toISOString();
     for (const r of await lerTudo('rede', 'tabela_id,cidade_id', (q) => q.gte('atualizado_em', desde))) recentes.add(`${r.tabela_id}|${r.cidade_id}`);
   }
