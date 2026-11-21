@@ -184,10 +184,13 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
     const idDe = (x) => (tipo === 'coparticipacao' ? x?.copart_tab_id : x?.carencia_id) ?? null;
     const difere = (a, l) => idDe(a) !== idDe(l) || lista(a.itens) !== lista(l.itens) || instante(a.vigencia_fim) !== instante(l.vigencia_fim)
       || (tipo === 'carencia' && lista(a.regras_aceitacao) !== lista(l.regras_aceitacao));
-    let mudou = linhas.filter((l) => { const a = antes.get(l.chave); return a && difere(a, l); });
+    const tem = (x) => Boolean(idDe(x) || lista(x?.itens));
+    // "Passou a ter tabela vigente" só grava, sem alerta: o Cotador às vezes não devolve a tabela numa consulta em lote
+    // e ela reaparece na seguinte — isso não é mudança de regra.
+    let mudou = linhas.filter((l) => { const a = antes.get(l.chave); return a && tem(a) && difere(a, l); });
 
     // Quem "perdeu" a tabela vigente numa consulta em lote é conferido de novo, um a um, antes de virar alerta.
-    const perderam = mudou.filter((l) => idDe(antes.get(l.chave)) && !idDe(l));
+    const perderam = mudou.filter((l) => !tem(l));
     for (const l of perderam) {
       if (tempoAcabou()) break;
       try {
