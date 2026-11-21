@@ -252,7 +252,9 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const wc = wb.addWorksheet('Coparticipação');
   cabecalho(wc, 1, ['Tabela', 'Plano', 'UF', 'Opção de coparticipação', 'Tabela de copart.', 'Vigência', 'Item', 'Valor / %']);
   for (const c of await lerEm('coparticipacao', '*')) {
-    const itens = c.itens?.length ? c.itens : [{ item: '(sem tabela vigente)' }];
+    const itens = c.itens?.length ? c.itens : [{ item: /^sem/i.test(c.coparticipacao || '')
+      ? '(opção sem coparticipação — não se aplica)'
+      : '(o Cotador não tem tabela de coparticipação vigente para este plano — confirmar com a operadora)' }];
     for (const it of itens) wc.addRow([nomeTab.get(c.tabela_id), nomePlano.get(c.plano_id), ufNome.get(c.uf_id), c.coparticipacao, c.nome,
       c.vigencia_inicio ? `${dataBR(c.vigencia_inicio)} a ${dataBR(c.vigencia_fim)}` : '', it.item, it.text_valor_copart ?? it.percent_text ?? '']);
   }
@@ -261,12 +263,15 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
   const wk = wb.addWorksheet('Carência');
   cabecalho(wk, 1, ['Tabela', 'Plano', 'UF', 'Tabela de carência', 'Vigência', 'Prazo', 'Cobertura', 'Regras de aceitação']);
   const vistos = new Set();
-  for (const c of await lerEm('carencia', '*')) {
+  const carencias = await lerEm('carencia', '*');
+  const comCarencia = new Set(carencias.filter((c) => c.itens?.length).map((c) => `${c.tabela_id}|${c.uf_id}`));
+  for (const c of carencias) {
+    if (!c.itens?.length && comCarencia.has(`${c.tabela_id}|${c.uf_id}`)) continue;
     const k = `${c.tabela_id}|${c.uf_id}|${c.carencia_id}`; // carência costuma ser igual para todos os planos da tabela
     if (vistos.has(k)) continue; vistos.add(k);
     const regras = (c.regras_aceitacao || []).map((r) => (typeof r === 'string' ? r : r.texto || r.text || JSON.stringify(r))).join(' | ');
     const itens = (c.itens || []).slice().sort((a, b) => (a.rank || 0) - (b.rank || 0));
-    if (!itens.length) wk.addRow([nomeTab.get(c.tabela_id), 'todos', ufNome.get(c.uf_id), '(sem tabela vigente)']);
+    if (!itens.length) wk.addRow([nomeTab.get(c.tabela_id), 'todos', ufNome.get(c.uf_id), '(o Cotador não tem tabela de carência vigente — confirmar com a operadora)']);
     itens.forEach((it, i) => wk.addRow([nomeTab.get(c.tabela_id), 'todos', ufNome.get(c.uf_id), c.nome,
       c.vigencia_inicio ? `${dataBR(c.vigencia_inicio)} a ${dataBR(c.vigencia_fim)}` : '', it.tempo, (it.text_carencia || '').replace(/\s+/g, ' '), i === 0 ? regras : '']));
   }
@@ -296,7 +301,7 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
       for (const r of rs) for (const l of r.locais || []) wr.addRow([nomeTab.get(r.tabela_id), r.plano, cidade.nome, l.nome, l.tipo, l.cobertura, dataBR(r.atualizado_em)]);
     }
   } else {
-    wr.addRow(['Escolha uma cidade para baixar a rede credenciada (para todas as cidades o arquivo ficaria grande demais).']);
+    wr.addRow(['Para todas as cidades a rede fica num arquivo próprio: aba "Rede" do site (ou escolha uma cidade aqui).']);
   }
   larguras(wr, [36, 24, 20, 48, 8, 20, 12]);
 
