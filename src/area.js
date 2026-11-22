@@ -51,10 +51,13 @@ export async function varrerArea(cot, registrarMudanca) {
     const agora = new Date().toISOString();
     const tabelas = new Map();
     const vinculos = [];
+    const catalogo = new Map(); // todas as tabelas do cotador (inclusive operadoras não monitoradas), por UF
 
     const rs = await emParalelo(lote, async (c) => {
       for (const tipo of TIPOS_TABELA) {
         const itens = await cot.listarTabelas(c.uf_id, c.id, tipo);
+        for (const t of itens) catalogo.set(`${t.id}|${c.uf}`, { tabela_id: t.id, uf: c.uf, nome: t.nome, operadora_id: t.operadoraId,
+          operadora: t.operadora, administradora: t.administradora, tipo_tabela: tipo, ultima_vez: agora });
         for (const t of itens.filter(monitorada)) {
           tabelas.set(t.id, {
             id: t.id, nome: t.nome, operadora_id: t.operadoraId, operadora: t.operadora,
@@ -109,6 +112,7 @@ export async function varrerArea(cot, registrarMudanca) {
     }
 
     if (tabelas.size) await gravar('tabelas', [...tabelas.values()], 'id');
+    if (catalogo.size) await gravar('catalogo_tabelas', [...catalogo.values()], 'tabela_id,uf');
     if (vinculos.length) await gravar('tabela_cidade', dedup(vinculos), 'tabela_id,cidade_id');
     // Avança só até a última cidade contínua que respondeu; se alguma falhou, para e retoma dali.
     const primeiraFalha = rs.findIndex((r) => r?.__erro);
