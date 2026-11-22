@@ -2,7 +2,7 @@
 //  diario  → preços por faixa + coparticipação + carência das tabelas ativas, com alerta no Telegram
 //  semanal → liga cidades do IBGE ao cotador e varre a área de comercialização (retoma de onde parou)
 
-import { db, inserir } from './db.js';
+import { db, inserir, getConfig, setConfig } from './db.js';
 import { Cotador } from './cotador.js';
 import { sincronizarCidades } from './cidades.js';
 import { varrerArea } from './area.js';
@@ -51,10 +51,19 @@ async function main() {
       const grupo = process.env.GRUPO;
       if (!grupo) throw new Error('Modo prioridade precisa da operadora (campo grupo, ex.: Unimed)');
       log(`Prioridade: ${grupo}`);
-      resumo.precos = await conferirPrecos(cot, registrarMudanca, { grupo });
-      resumo.regras = await conferirRegras(cot, registrarMudanca, { grupo });
-      resumo.descontos = await conferirDescontos(cot, registrarMudanca, { grupo });
+      // Continuação de uma prioridade longa: preços/regras/descontos já feitos nos últimos 3 dias não se repetem.
+      const chaveBase = `prioridade_base_${grupo}`;
+      const base = await getConfig(chaveBase);
+      if (!base || Date.now() - new Date(base).getTime() > 3 * 864e5) {
+        resumo.precos = await conferirPrecos(cot, registrarMudanca, { grupo });
+        resumo.regras = await conferirRegras(cot, registrarMudanca, { grupo });
+        resumo.descontos = await conferirDescontos(cot, registrarMudanca, { grupo });
+        await setConfig(chaveBase, new Date().toISOString());
+      } else log(`Preços, regras e descontos de ${grupo} já conferidos em ${base}; indo direto para a rede.`);
       resumo.rede = await varrerRede(cot, registrarMudanca, { grupo });
+      // Se a rede não fechou nesta execução, fica marcada para continuar sozinha (src/continuar.js).
+      await setConfig('prioridade_pendente', resumo.rede?.completo ? null : grupo);
+      if (resumo.rede?.completo) await setConfig(chaveBase, null);
     }
     if (modo === 'regras') resumo.regras = await conferirRegras(cot, registrarMudanca, process.env.GRUPO ? { grupo: process.env.GRUPO } : {});
     if (modo === 'descontos') resumo.descontos = await conferirDescontos(cot, registrarMudanca);

@@ -21,6 +21,10 @@ concurrency:
   group: monitor-tabelas
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   rodar:
     runs-on: ubuntu-latest
@@ -50,3 +54,9 @@ jobs:
           fi
           echo "Modo: $MODO"
           node src/index.js "$MODO"
+      - name: Continuar prioridade pendente
+        if: always()
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: node src/continuar.js
