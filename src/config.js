@@ -21,6 +21,7 @@ export const TIPOS_TABELA = ['PME', 'PJ', 'PF'];
 
 // Operadoras monitoradas: ids conferidos no cotador + nomes (cobre as várias Unimeds).
 export const OPERADORAS_IDS = new Set([
+  394,  // Alice
   3,    // Hapvida
   388,  // Hapvida Clinipam
   121,  // NotreDame (GNDI)
@@ -29,7 +30,7 @@ export const OPERADORAS_IDS = new Set([
   549,  // Bradesco Saúde
   11,   // SulAmérica
 ]);
-export const OPERADORAS_NOMES = /hapvida|clinipam|notre ?dame|gndi|interm[eé]dica|\bamil\b|bradesco|sul ?am[eé]rica|unimed/i;
+export const OPERADORAS_NOMES = /hapvida|clinipam|notre ?dame|gndi|interm[eé]dica|\bamil\b|bradesco|sul ?am[eé]rica|unimed|\balice\b/i;
 
 export const monitorada = (t) => OPERADORAS_IDS.has(t.operadoraId) || OPERADORAS_NOMES.test(t.operadora || '');
 

@@ -16,6 +16,10 @@ on:
         description: 'modo prioridade (obrigatório) ou regras (opcional): Hapvida, Hapvida Clinipam, NotreDame, Amil, Bradesco Saúde, SulAmérica ou Unimed'
         required: false
         default: ''
+      ufs:
+        description: 'só prioridade de operadora nova: UFs onde descobrir as tabelas (ex.: SP)'
+        required: false
+        default: ''
 
 concurrency:
   group: monitor-tabelas
@@ -42,6 +46,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GRUPO: ${{ github.event.inputs.grupo }}
+          UFS: ${{ github.event.inputs.ufs }}
         run: |
           MODO="${{ github.event.inputs.modo }}"
           if [ -z "$MODO" ]; then

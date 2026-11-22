@@ -38,6 +38,7 @@ export function grupoDe(op) {
   if (o.includes('bradesco')) return 'Bradesco Saúde';
   if (/sul.?am.rica/.test(o)) return 'SulAmérica';
   if (o.includes('unimed')) return 'Unimed';
+  if (/\balice\b/.test(o)) return 'Alice';
   return op || 'Outras';
 }
 // Filtro opcional por operadora (modo prioridade)

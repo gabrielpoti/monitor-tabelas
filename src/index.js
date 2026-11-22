@@ -9,6 +9,7 @@ import { varrerArea } from './area.js';
 import { conferirPrecos, conferirRegras } from './diario.js';
 import { varrerRede } from './rede.js';
 import { conferirDescontos } from './descontos.js';
+import { descobrirTabelas } from './descobrir.js';
 import { enviar, montarRelatorio } from './telegram.js';
 import { log, minutos, ultimoLog } from './util.js';
 
@@ -51,6 +52,8 @@ async function main() {
       const grupo = process.env.GRUPO;
       if (!grupo) throw new Error('Modo prioridade precisa da operadora (campo grupo, ex.: Unimed)');
       log(`Prioridade: ${grupo}`);
+      // Operadora recém-incluída: descobre as tabelas nas UFs informadas antes de cotar.
+      if (process.env.UFS) resumo.descoberta = await descobrirTabelas(cot, { grupo, ufs: process.env.UFS.split(',').map((u) => u.trim().toUpperCase()).filter(Boolean) });
       // Continuação de uma prioridade longa: preços/regras/descontos já feitos nos últimos 3 dias não se repetem.
       const chaveBase = `prioridade_base_${grupo}`;
       const base = await getConfig(chaveBase);
@@ -62,7 +65,11 @@ async function main() {
       } else log(`Preços, regras e descontos de ${grupo} já conferidos em ${base}; indo direto para a rede.`);
       resumo.rede = await varrerRede(cot, registrarMudanca, { grupo });
       // Se a rede não fechou nesta execução, fica marcada para continuar sozinha (src/continuar.js).
-      await setConfig('prioridade_pendente', resumo.rede?.completo ? null : grupo);
+      // Fila de prioridades (mais de uma operadora pode estar na fila; a da vez fica na frente até fechar).
+      const lerFila = (v) => { try { const x = JSON.parse(v); return Array.isArray(x) ? x : [x]; } catch { return v ? [v] : []; } };
+      let fila = lerFila(await getConfig('prioridade_pendente')).filter((g) => g && g !== grupo);
+      if (!resumo.rede?.completo) fila = [grupo, ...fila];
+      await setConfig('prioridade_pendente', fila.length ? JSON.stringify(fila) : null);
       if (resumo.rede?.completo) await setConfig(chaveBase, null);
     }
     if (modo === 'regras') resumo.regras = await conferirRegras(cot, registrarMudanca, process.env.GRUPO ? { grupo: process.env.GRUPO } : {});

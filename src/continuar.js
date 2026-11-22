@@ -3,7 +3,9 @@
 // terminar, passa por aqui e dispara a continuação. Assim a prioridade nunca derruba o diário da fila.
 import { getConfig } from './db.js';
 
-const grupo = await getConfig('prioridade_pendente');
+const valor = await getConfig('prioridade_pendente');
+let fila; try { fila = JSON.parse(valor); } catch { fila = valor; }
+const grupo = Array.isArray(fila) ? fila[0] : fila;
 if (!grupo) { console.log('Nenhuma prioridade pendente.'); process.exit(0); }
 const repo = process.env.GITHUB_REPOSITORY;
 const token = process.env.GH_TOKEN;

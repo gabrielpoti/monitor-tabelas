@@ -44,6 +44,8 @@ export async function varrerArea(cot, registrarMudanca) {
   log(`Área: ${pendentes.length} de ${cidades.length} cidades a varrer (baseline=${baseline})`);
 
   const novasTabelasAvisadas = new Set();
+  // Tabelas de operadora recém-incluída (descoberta parcial): a 1ª varredura completa não avisa as cidades delas.
+  const silenciadas = new Set(JSON.parse((await getConfig('area_silenciar')) || '[]'));
   for (let i = 0; i < pendentes.length && !tempoAcabou(); i += 40) {
     const lote = pendentes.slice(i, i + 40);
     const agora = new Date().toISOString();
@@ -95,7 +97,7 @@ export async function varrerArea(cot, registrarMudanca) {
     if (!baseline) {
       const porTabela = new Map();
       for (const v of novosVinculos) {
-        if (novasTabelasAvisadas.has(v.tabela_id)) continue;
+        if (novasTabelasAvisadas.has(v.tabela_id) || silenciadas.has(v.tabela_id)) continue;
         if (!porTabela.has(v.tabela_id)) porTabela.set(v.tabela_id, []);
         porTabela.get(v.tabela_id).push(nomesCidade.get(v.cidade_id));
       }
@@ -168,6 +170,7 @@ export async function varrerArea(cot, registrarMudanca) {
   }
   await setConfig('area_cursor', 0);
   await setConfig('area_inicio', null);
+  await setConfig('area_silenciar', null);
   await setConfig('area_baseline_ok', '1');
   return { completa: true, tabelasAtivas: tabelasAgora.length - inativas.length, vinculosRemovidos: sumiram.length, tabelasRemovidas: inativas.length };
 }
