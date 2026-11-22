@@ -2,9 +2,10 @@ import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { aplicarFiltrosMudancas } from '@/lib/excel';
 import { GRUPOS, slug, grupoDoSlug, grupoDe, TIPOS_MUDANCA, dataHoraBR } from '@/lib/util';
+import { contextoDetalhe, detalhe, formatarCelula } from '@/lib/detalhe';
 
 export const dynamic = 'force-dynamic';
-const POR_PAGINA = 100;
+const POR_PAGINA = 50;
 
 async function marcar(form) {
   'use server';
@@ -19,11 +20,12 @@ async function marcar(form) {
 
 export default async function Alteracoes({ searchParams }) {
   const sp = await searchParams;
-  const filtros = { grupo: sp.grupo ? grupoDoSlug(sp.grupo) : null, tipo: sp.tipo || null, de: sp.de || null, ate: sp.ate || null, lida: sp.lida || null };
+  const filtros = { grupo: sp.grupo ? grupoDoSlug(sp.grupo) : null, tipo: sp.tipo || null, de: sp.de || null, ate: sp.ate || null, lida: sp.lida || null, falsos: sp.falsos === '1' };
   const pagina = Math.max(1, Number(sp.p) || 1);
-  const { data, count } = await aplicarFiltrosMudancas(db().from('mudancas').select('id,tipo,operadora,uf,tabela_id,descricao,detectado_em,lida', { count: 'exact' }), filtros)
+  const { data, count } = await aplicarFiltrosMudancas(db().from('mudancas').select('id,tipo,operadora,uf,tabela_id,descricao,detectado_em,lida,falso_positivo,antes,depois', { count: 'exact' }), filtros)
     .order('id', { ascending: false }).range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1);
-  const qsBase = new URLSearchParams(Object.entries({ grupo: sp.grupo, tipo: sp.tipo, de: sp.de, ate: sp.ate, lida: sp.lida }).filter(([, v]) => v)).toString();
+  const qsBase = new URLSearchParams(Object.entries({ grupo: sp.grupo, tipo: sp.tipo, de: sp.de, ate: sp.ate, lida: sp.lida, falsos: sp.falsos }).filter(([, v]) => v)).toString();
+  const ctx = await contextoDetalhe(data || []);
   const paginas = Math.ceil((count || 0) / POR_PAGINA);
 
   return (
@@ -36,6 +38,7 @@ export default async function Alteracoes({ searchParams }) {
         <label>De<input type="date" name="de" defaultValue={sp.de || ''} /></label>
         <label>Até<input type="date" name="ate" defaultValue={sp.ate || ''} /></label>
         <label>Situação<select name="lida" defaultValue={sp.lida || ''}><option value="">Todas</option><option value="nao">Não lidas</option><option value="sim">Lidas</option></select></label>
+        <label>Falsos alertas<select name="falsos" defaultValue={sp.falsos || ''}><option value="">Esconder</option><option value="1">Mostrar</option></select></label>
         <button type="submit">Filtrar</button>
         <a className="botao sec" href={`/api/alteracoes?${qsBase}`}>Baixar planilha</a>
       </form>
@@ -54,7 +57,11 @@ export default async function Alteracoes({ searchParams }) {
                 <td className="pequeno" style={{ whiteSpace: 'nowrap' }}>{dataHoraBR(m.detectado_em)}</td>
                 <td>{grupoDe(m.operadora)}{m.uf && <span className="pequeno"> · {m.uf}</span>}</td>
                 <td><span className="chip">{TIPOS_MUDANCA[m.tipo] || m.tipo}</span></td>
-                <td>{m.tabela_id ? <a href={`/tabela/${m.tabela_id}${m.uf ? `?uf=${m.uf}` : ''}`} style={{ color: 'inherit' }}>{m.descricao}</a> : m.descricao}</td>
+                <td>
+                  {m.falso_positivo && <span className="chip" title="Alerta gerado por falha de consulta já corrigida">falso alerta</span>}{' '}
+                  {m.tabela_id ? <a href={`/tabela/${m.tabela_id}${m.uf ? `?uf=${m.uf}` : ''}`} style={{ color: 'inherit' }}>{m.descricao}</a> : m.descricao}
+                  <Detalhe m={m} ctx={ctx} />
+                </td>
               </tr>))}
             </tbody></table></div>
         ) : <div className="vazio">Nenhuma alteração neste filtro.</div>}
@@ -67,5 +74,25 @@ export default async function Alteracoes({ searchParams }) {
         </div>
       )}
     </>
+  );
+}
+
+function Detalhe({ m, ctx }) {
+  const d = detalhe(m, ctx);
+  if (!d.linhas.length && !d.aviso) return null;
+  const moeda = new Set(d.moeda || []);
+  return (
+    <details className="detalhe">
+      <summary>ver detalhes{d.linhas.length ? ` (${d.linhas.length})` : ''}</summary>
+      {ctx.tabelas.get(m.tabela_id) && <p className="pequeno">Tabela: <b>{ctx.tabelas.get(m.tabela_id).nome}</b>{m.uf ? ` · ${m.uf}` : ''}</p>}
+      {d.aviso && <p className="pequeno">{d.aviso}</p>}
+      {d.linhas.length > 0 && (
+        <div className="rolagem"><table className="mini">
+          <thead><tr>{d.colunas.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>{d.linhas.slice(0, 500).map((l, i) => <tr key={i}>{l.map((v, j) => <td key={j}>{formatarCelula(v, moeda.has(j))}</td>)}</tr>)}</tbody>
+        </table></div>
+      )}
+      {d.linhas.length > 500 && <p className="pequeno">Mostrando 500 de {d.linhas.length}. A lista completa está na planilha.</p>}
+    </details>
   );
 }

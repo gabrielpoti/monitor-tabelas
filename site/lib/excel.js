@@ -2,6 +2,7 @@ import 'server-only';
 import ExcelJS from 'exceljs';
 import { db, tudo } from './db';
 import { COLS_FAIXA, FAIXAS, rotuloFaixa, slug, orIlike, dataBR, TIPOS_MUDANCA, grupoDe } from './util';
+import { contextoDetalhe, detalhe } from './detalhe';
 
 const AZUL = 'FF0B6BCB';
 
@@ -313,50 +314,55 @@ export async function planilhaPrecos({ grupo, cidade, tipo, admin }) {
 export async function planilhaAlteracoes(filtros) {
   const s = db();
   const linhas = await tudo(() => aplicarFiltrosMudancas(s.from('mudancas').select('*'), filtros).order('id', { ascending: false }));
+  const ctx = await contextoDetalhe(linhas);
+  const nomeTab = (id) => ctx.tabelas.get(id)?.nome || (id ? String(id) : '');
   const wb = new ExcelJS.Workbook();
+  wb.creator = 'Monitor de Tabelas';
+
+  // 1) Resumo: uma linha por alteração
   const ws = wb.addWorksheet('Alterações');
-  cabecalho(ws, 1, ['Data', 'Operadora', 'Tipo', 'UF', 'Tabela (id)', 'Descrição', 'Lida']);
+  cabecalho(ws, 1, ['Data', 'Operadora', 'Tipo', 'Tabela', 'Administradora', 'UF', 'Resumo', 'Itens no detalhe', 'Lida']);
   for (const m of linhas) {
-    const r = ws.addRow([new Date(m.detectado_em), grupoDe(m.operadora), TIPOS_MUDANCA[m.tipo] || m.tipo, m.uf, m.tabela_id, m.descricao, m.lida ? 'Sim' : 'Não']);
+    const t = ctx.tabelas.get(m.tabela_id);
+    const d = detalhe(m, ctx);
+    const r = ws.addRow([new Date(m.detectado_em), grupoDe(m.operadora), TIPOS_MUDANCA[m.tipo] || m.tipo, nomeTab(m.tabela_id), t?.administradora || '', m.uf, m.descricao, d.linhas.length, m.lida ? 'Sim' : 'Não']);
     r.getCell(1).numFmt = 'dd/mm/yyyy hh:mm';
   }
-  larguras(ws, [16, 16, 18, 5, 10, 110, 6]);
-  ws.getColumn(6).alignment = { wrapText: true, vertical: 'top' };
+  if (!linhas.length) ws.addRow(['Nenhuma alteração neste filtro.']);
+  larguras(ws, [16, 16, 20, 40, 14, 5, 100, 10, 6]);
+  ws.getColumn(7).alignment = { wrapText: true, vertical: 'top' };
 
-  // Detalhe de preço: uma linha por combinação que mudou
-  const wd = wb.addWorksheet('Detalhe de preços');
-  cabecalho(wd, 1, ['Data', 'Operadora', 'Tabela', 'UF', 'Plano', 'Faixa', 'Acomodação', 'Coparticipação', 'Antes', 'Depois', 'Variação']);
-  const precoMud = linhas.filter((m) => m.tipo === 'preco' && Array.isArray(m.depois));
-  const chaves = [...new Set(precoMud.flatMap((m) => m.depois.map((d) => d.chave)))];
-  const info = new Map();
-  for (let i = 0; i < chaves.length; i += 200) {
-    const { data } = await s.from('precos').select('chave,plano,uf').in('chave', chaves.slice(i, i + 200));
-    for (const p of data || []) info.set(p.chave, p);
-  }
-  const tabIds = [...new Set(precoMud.map((m) => m.tabela_id))];
-  const nomes = new Map();
-  for (let i = 0; i < tabIds.length; i += 200) {
-    const { data } = await s.from('tabelas').select('id,nome').in('id', tabIds.slice(i, i + 200));
-    for (const t of data || []) nomes.set(t.id, t.nome);
-  }
-  for (const m of precoMud) {
-    const antes = new Map((m.antes || []).map((a) => [a.chave, a.valor]));
-    for (const d of m.depois) {
-      const [, , , faixa, acomodacao, copart] = d.chave.split('|');
-      const a = Number(antes.get(d.chave)), n = Number(d.valor);
-      const r = wd.addRow([new Date(m.detectado_em), grupoDe(m.operadora), nomes.get(m.tabela_id) || m.tabela_id, info.get(d.chave)?.uf || m.uf,
-        info.get(d.chave)?.plano || '', rotuloFaixa(faixa), acomodacao, copart, a, n, a ? (n - a) / a : null]);
-      r.getCell(1).numFmt = 'dd/mm/yyyy';
-      r.getCell(9).numFmt = r.getCell(10).numFmt = '"R$" #,##0.00';
-      r.getCell(11).numFmt = '0.0%';
+  // 2) Uma aba por tipo, com o detalhe completo de cada alteração
+  const ordem = Object.keys(TIPOS_MUDANCA);
+  const tipos = [...new Set(linhas.map((m) => m.tipo))].sort((a, b) => ordem.indexOf(a) - ordem.indexOf(b));
+  for (const tipo of tipos) {
+    const ms = linhas.filter((m) => m.tipo === tipo);
+    const amostra = ms.map((m) => detalhe(m, ctx)).find((d) => d.colunas.length) || { colunas: [] };
+    const nomeAba = (TIPOS_MUDANCA[tipo] || tipo).replace(/[\\/?*[\]:]/g, '').slice(0, 31);
+    const wt = wb.addWorksheet(nomeAba);
+    const fixas = ['Data', 'Operadora', 'Tabela', 'UF'];
+    cabecalho(wt, 1, [...fixas, ...amostra.colunas, 'Observação']);
+    for (const m of ms) {
+      const d = detalhe(m, ctx);
+      const base = [new Date(m.detectado_em), grupoDe(m.operadora), nomeTab(m.tabela_id), m.uf || ''];
+      const moeda = new Set(d.moeda || []);
+      if (!d.linhas.length) { const r = wt.addRow([...base, ...amostra.colunas.map(() => null), d.aviso || m.descricao]); r.getCell(1).numFmt = 'dd/mm/yyyy'; continue; }
+      d.linhas.forEach((l, i) => {
+        const r = wt.addRow([...base, ...l, i === 0 ? (d.aviso || '') : '']);
+        r.getCell(1).numFmt = 'dd/mm/yyyy';
+        for (const j of moeda) if (typeof l[j] === 'number') r.getCell(fixas.length + 1 + j).numFmt = '"R$" #,##0.00';
+      });
     }
+    larguras(wt, [11, 16, 40, 5, ...amostra.colunas.map((c) => (/Cidade|Local|Plano|Item|Cobertura|Regra/.test(c) ? 34 : 14)), 40]);
   }
-  larguras(wd, [11, 16, 40, 5, 24, 10, 13, 24, 12, 12, 9]);
-  return { buffer: await wb.xlsx.writeBuffer(), nome: `alteracoes-${new Date().toISOString().slice(0, 10)}.xlsx` };
+  const partes = ['alteracoes', ...(filtros.grupos || (filtros.grupo ? [filtros.grupo] : [])).map(slug)];
+  return { buffer: await wb.xlsx.writeBuffer(), nome: `${partes.join('-')}-${new Date().toISOString().slice(0, 10)}.xlsx` };
 }
 
-export function aplicarFiltrosMudancas(q, { grupo, tipo, de, ate, lida }) {
+export function aplicarFiltrosMudancas(q, { grupo, grupos, tipo, de, ate, lida, falsos }) {
   if (grupo) q = q.or(orIlike(grupo));
+  else if (grupos?.length) q = q.or(grupos.map((g) => orIlike(g)).join(','));
+  if (!falsos) q = q.eq('falso_positivo', false);
   if (tipo) q = q.eq('tipo', tipo);
   if (de) q = q.gte('detectado_em', `${de}T00:00:00-03:00`);
   if (ate) q = q.lte('detectado_em', `${ate}T23:59:59-03:00`);

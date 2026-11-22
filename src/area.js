@@ -13,24 +13,31 @@ export async function varrerArea(cot, registrarMudanca) {
   let inicioVarredura = await getConfig('area_inicio');
   if (!cursor || !inicioVarredura) {
     cursor = 0; inicioVarredura = new Date().toISOString();
+    // Fotografa os planos de cada tabela: a comparação de planos é feita só no fim da varredura,
+    // com a união de todas as cidades (cada cidade lista só os planos regionais dela).
+    { const { error } = await db.rpc('area_iniciar_planos'); if (error) throw new Error('Fotografando planos: ' + error.message); }
     await setConfig('area_inicio', inicioVarredura);
   }
   const baseline = (await getConfig('area_baseline_ok')) !== '1'; // 1ª varredura completa não gera alertas
 
-  const tabelasAntes = new Map((await lerTudo('tabelas', 'id,nome,operadora,planos,ativa,ultima_vez')).map((t) => [t.id, t]));
-  // Planos vistos nesta varredura, por tabela: a lista final é a união de todas as cidades
-  // (uma cidade em que o cotador lista a tabela sem planos não apaga os planos vistos nas outras).
+  const tabelasAntes = new Map((await lerTudo('tabelas', 'id,nome,operadora,planos,planos_inicio,planos_vistos,ativa,ultima_vez')).map((t) => [t.id, t]));
+  // Planos vistos nesta varredura, por tabela (união de todas as cidades, guardada em planos_vistos).
   const planosVarredura = new Map();
   for (const t of tabelasAntes.values()) {
-    if (t.ultima_vez && t.ultima_vez >= inicioVarredura && (t.planos || []).length) {
-      planosVarredura.set(t.id, new Map(t.planos.map((p) => [p.id, p.nome])));
-    }
+    if ((t.planos_vistos || []).length) planosVarredura.set(t.id, new Map(t.planos_vistos.map((p) => [p.id, p.nome])));
   }
+  const lista = (m) => [...m.entries()].map(([pid, nome]) => ({ id: pid, nome })).sort((a, b) => a.id - b.id);
   const unirPlanos = (id, novos) => {
     if (!planosVarredura.has(id)) planosVarredura.set(id, new Map());
     const m = planosVarredura.get(id);
     for (const p of novos) m.set(p.id, p.nome);
-    return [...m.entries()].map(([pid, nome]) => ({ id: pid, nome })).sort((a, b) => a.id - b.id);
+    return lista(m);
+  };
+  // Durante a varredura a tabela mantém os planos da foto + os vistos (a conferência diária continua cotando todos).
+  const planosEmUso = (id, vistos) => {
+    const m = new Map((tabelasAntes.get(id)?.planos_inicio || tabelasAntes.get(id)?.planos || []).map((p) => [p.id, p.nome]));
+    for (const p of vistos) m.set(p.id, p.nome);
+    return lista(m);
   };
   const nomesCidade = new Map(cidades.map((c) => [c.id, `${c.nome}/${c.uf}`]));
   const pendentes = cidades.filter((c) => c.id > cursor);
@@ -51,7 +58,8 @@ export async function varrerArea(cot, registrarMudanca) {
             id: t.id, nome: t.nome, operadora_id: t.operadoraId, operadora: t.operadora,
             administradora: t.administradora, tipo_tabela: tipo, uf_id: c.uf_id,
             minimo_vidas: t.minimoVidas, exige_entidade: t.exigeEntidade,
-            planos: unirPlanos(t.id, (t.planos || []).map((p) => ({ id: p.id, nome: p.nome }))),
+            ...(() => { const vistos = unirPlanos(t.id, (t.planos || []).map((p) => ({ id: p.id, nome: p.nome })));
+              return { planos_vistos: vistos, planos: planosEmUso(t.id, vistos) }; })(),
             ativa: true, ultima_vez: agora,
           });
           vinculos.push({ tabela_id: t.id, cidade_id: c.id, ultima_vez: agora });
@@ -62,10 +70,9 @@ export async function varrerArea(cot, registrarMudanca) {
     // vínculos novos (cidade passou a ter a tabela)
     const ids = [...new Set(vinculos.map((v) => v.tabela_id))];
     const existentes = new Set();
-    for (let k = 0; k < ids.length; k += 200) {
-      const { data } = await db.from('tabela_cidade').select('tabela_id,cidade_id')
-        .in('tabela_id', ids.slice(k, k + 200)).in('cidade_id', lote.map((c) => c.id));
-      for (const v of data || []) existentes.add(`${v.tabela_id}|${v.cidade_id}`);
+    for (const c of lote) {
+      const vs = await lerTudo('tabela_cidade', 'tabela_id,cidade_id', (q) => q.eq('cidade_id', c.id));
+      for (const v of vs) existentes.add(`${v.tabela_id}|${v.cidade_id}`);
     }
     const novosVinculos = vinculos.filter((v) => !existentes.has(`${v.tabela_id}|${v.cidade_id}`));
 
@@ -76,15 +83,6 @@ export async function varrerArea(cot, registrarMudanca) {
           novasTabelasAvisadas.add(t.id);
           registrarMudanca({ tipo: 'tabela_nova', operadora: t.operadora, tabela_id: t.id, chave: String(t.id),
             descricao: `Tabela nova: ${t.nome} (${t.tipo_tabela}, ${t.administradora}) — ${t.planos.length} planos`, depois: t });
-        }
-        tabelasAntes.set(t.id, t);
-      } else if (estavel(antes.planos) !== estavel(t.planos) && !baseline) {
-        const a = new Set((antes.planos || []).map((p) => p.nome)), d = new Set(t.planos.map((p) => p.nome));
-        const entrou = [...d].filter((x) => !a.has(x)), saiu = [...a].filter((x) => !d.has(x));
-        if (entrou.length || saiu.length) {
-          registrarMudanca({ tipo: 'planos', operadora: t.operadora, tabela_id: t.id, chave: String(t.id),
-            descricao: `${t.nome}: ${entrou.length ? 'entrou ' + entrou.join(', ') : ''}${entrou.length && saiu.length ? '; ' : ''}${saiu.length ? 'saiu ' + saiu.join(', ') : ''}`,
-            antes: antes.planos, depois: t.planos });
         }
         tabelasAntes.set(t.id, t);
       } else if (antes.ativa === false && !baseline) {
@@ -126,6 +124,24 @@ export async function varrerArea(cot, registrarMudanca) {
   const sumiram = await lerTudo('tabela_cidade', 'tabela_id,cidade_id', (q) => q.lt('ultima_vez', inicioVarredura));
   const tabelasAgora = await lerTudo('tabelas', 'id,nome,operadora,ativa,ultima_vez');
   const inativas = tabelasAgora.filter((t) => t.ativa && t.ultima_vez < inicioVarredura);
+
+  // Planos: compara a união vista nesta varredura com a foto do início.
+  const comPlanos = await lerTudo('tabelas', 'id,nome,operadora,planos_inicio,planos_vistos,ativa,ultima_vez', (q) => q.eq('ativa', true).gte('ultima_vez', inicioVarredura));
+  const planosFinais = [];
+  for (const t of comPlanos) {
+    const vistos = t.planos_vistos || [];
+    if (!vistos.length) continue;
+    planosFinais.push({ id: t.id, planos: vistos });
+    if (baseline || !t.planos_inicio) continue;
+    const a = new Map(t.planos_inicio.map((p) => [p.id, p.nome])), d = new Map(vistos.map((p) => [p.id, p.nome]));
+    const entrou = vistos.filter((p) => !a.has(p.id)), saiu = t.planos_inicio.filter((p) => !d.has(p.id));
+    if (entrou.length || saiu.length) {
+      registrarMudanca({ tipo: 'planos', operadora: t.operadora, tabela_id: t.id, chave: String(t.id),
+        descricao: `${t.nome}: ${entrou.length ? 'entrou ' + entrou.map((p) => p.nome).join(', ') : ''}${entrou.length && saiu.length ? '; ' : ''}${saiu.length ? 'saiu ' + saiu.map((p) => p.nome).join(', ') : ''}`,
+        antes: { planos: t.planos_inicio, saiu }, depois: { planos: vistos, entrou } });
+    }
+  }
+  if (planosFinais.length) await gravar('tabelas', planosFinais, 'id');
 
   if (!baseline) {
     const nomesTab = new Map(tabelasAgora.map((t) => [t.id, t]));

@@ -95,7 +95,8 @@ export async function conferirDescontos(cot, registrarMudanca, { grupo } = {}) {
     const ex = ls[0];
     registrarMudanca({ tipo: 'desconto_vidas', operadora: t.operadora, tabela_id: t.id, uf: ex.uf, chave: `${t.id}|${ex.uf_id}`,
       descricao: `Desconto por quantidade mudou — ${t.nome} (${ex.uf}), ${ls.length} combinação(ões). Ex.: ${ex.plano} ${ex.acomodacao}: antes "${antes.get(ex.chave).texto}", agora "${ex.texto}"`,
-      antes: ls.map((l) => ({ chave: l.chave, texto: antes.get(l.chave).texto })), depois: ls.map((l) => ({ chave: l.chave, texto: l.texto })) });
+      antes: ls.map((l) => ({ chave: l.chave, plano: l.plano, acomodacao: l.acomodacao, coparticipacao: l.coparticipacao, texto: antes.get(l.chave).texto })),
+      depois: ls.map((l) => ({ chave: l.chave, plano: l.plano, acomodacao: l.acomodacao, coparticipacao: l.coparticipacao, texto: l.texto, regra: l.regra })) });
   }
 
   await gravar('descontos', linhas, 'chave');

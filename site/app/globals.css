@@ -53,3 +53,8 @@ button.sec, .botao.sec { background: #fff; color: var(--destaque); }
 details summary { cursor: pointer; }
 .pequeno { font-size: .82rem; color: var(--suave); }
 @media (max-width: 640px) { main { padding: 1rem .6rem 3rem; } th, td { padding: .4rem; } }
+details.detalhe { margin-top: .35rem; }
+details.detalhe summary { cursor: pointer; color: #0b6bcb; font-size: .85rem; }
+details.detalhe .rolagem { max-height: 420px; overflow: auto; margin-top: .4rem; }
+table.mini { font-size: .8rem; }
+table.mini th, table.mini td { padding: .25rem .45rem; white-space: nowrap; }

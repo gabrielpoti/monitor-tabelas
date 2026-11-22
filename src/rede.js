@@ -96,19 +96,21 @@ export async function varrerRede(cot, registrarMudanca, { grupo } = {}) {
     if (!baseline && linhas.length) {
       const antes = new Map();
       for (const [cid, ls] of agrupar(linhas, (l) => l.cidade_id)) {
-        const { data } = await db.from('rede').select('tabela_id,plano_id,cidade_id,locais')
-          .eq('cidade_id', cid).in('tabela_id', [...new Set(ls.map((l) => l.tabela_id))]);
-        for (const r of data || []) antes.set(`${r.tabela_id}|${r.plano_id}|${r.cidade_id}`, r.locais || []);
+        const tids = [...new Set(ls.map((l) => l.tabela_id))];
+        const data = await lerTudo('rede', 'tabela_id,plano_id,cidade_id,locais', (q) => q.eq('cidade_id', cid).in('tabela_id', tids));
+        for (const r of data) antes.set(`${r.tabela_id}|${r.plano_id}|${r.cidade_id}`, r.locais || []);
       }
       // agrupa por tabela+cidade para não gerar um alerta por plano
       for (const [k, ls] of agrupar(linhas, (l) => `${l.tabela_id}|${l.cidade_id}`)) {
-        const entrou = new Set(), saiu = new Set();
+        const entrou = new Set(), saiu = new Set(), porPlano = [];
         for (const l of ls) {
           const a = antes.get(`${l.tabela_id}|${l.plano_id}|${l.cidade_id}`);
           if (!a) continue;
           const nomesA = new Set(a.map((x) => x.nome)), nomesN = new Set(l.locais.map((x) => x.nome));
-          for (const n of nomesN) if (!nomesA.has(n)) entrou.add(n);
-          for (const n of nomesA) if (!nomesN.has(n)) saiu.add(n);
+          const e = l.locais.filter((x) => !nomesA.has(x.nome)), sa = a.filter((x) => !nomesN.has(x.nome));
+          for (const x of e) entrou.add(x.nome);
+          for (const x of sa) saiu.add(x.nome);
+          if (e.length || sa.length) porPlano.push({ plano: l.plano, entrou: e, saiu: sa });
         }
         if (entrou.size || saiu.size) {
           const { _t: t, _c: c } = ls[0];
@@ -117,7 +119,7 @@ export async function varrerRede(cot, registrarMudanca, { grupo } = {}) {
           if (saiu.size) partes.push(`saiu ${[...saiu].slice(0, 5).join(', ')}${saiu.size > 5 ? ` (+${saiu.size - 5})` : ''}`);
           registrarMudanca({ tipo: 'rede', operadora: t.operadora, tabela_id: t.id, uf: c.uf, chave: k,
             descricao: `Rede — ${t.nome} em ${c.nome}/${c.uf}: ${partes.join('; ')}`,
-            antes: { saiu: [...saiu] }, depois: { entrou: [...entrou] } });
+            antes: { saiu: [...saiu] }, depois: { entrou: [...entrou], cidade: `${c.nome}/${c.uf}`, porPlano } });
         }
       }
     }

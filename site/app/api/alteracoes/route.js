@@ -7,6 +7,8 @@ export async function GET(req) {
   const p = req.nextUrl.searchParams;
   const { buffer, nome } = await planilhaAlteracoes({
     grupo: p.get('grupo') ? grupoDoSlug(p.get('grupo')) : null,
+    grupos: p.get('grupos') ? p.get('grupos').split(',').map(grupoDoSlug).filter(Boolean) : null,
+    falsos: p.get('falsos') === '1',
     tipo: p.get('tipo') || null, de: p.get('de') || null, ate: p.get('ate') || null, lida: p.get('lida') || null,
   });
   return new Response(buffer, { headers: {

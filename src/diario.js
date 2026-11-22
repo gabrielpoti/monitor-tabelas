@@ -91,33 +91,39 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
       if (String(a.desconto ?? '') !== String(n.desconto ?? '')) descontos.push({ a, n });
     }
     const base = { operadora: t.operadora, tabela_id: t.id, uf: linhas[0].uf };
+    const item = (x) => ({ chave: x.chave, plano: x.plano, plano_id: x.plano_id, faixa: x.faixa, acomodacao: x.acomodacao, coparticipacao: x.coparticipacao });
     if (alteradas.length) {
       const media = alteradas.reduce((s, x) => s + (x.p || 0), 0) / alteradas.length;
       const ex = alteradas[0];
       registrarMudanca({ ...base, tipo: 'preco', chave: k,
         descricao: `${nome}: ${alteradas.length} preço(s) de tabela mudaram, média ${media >= 0 ? '+' : ''}${media.toFixed(1).replace('.', ',')}% — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: R$ ${brl(ex.cheioA)} → R$ ${brl(ex.cheioN)}`,
-        antes: alteradas.map((x) => ({ chave: x.a.chave, valor: x.cheioA })), depois: alteradas.map((x) => ({ chave: x.n.chave, valor: x.cheioN })) });
+        antes: alteradas.map((x) => ({ ...item(x.n), valor: x.cheioA })), depois: alteradas.map((x) => ({ ...item(x.n), valor: x.cheioN, pct: x.p })) });
     }
     if (agendadas.length) {
       const datas = [...new Set(agendadas.map((x) => x.novo_preco_em.slice(0, 10)))].map((d) => d.split('-').reverse().join('/'));
       registrarMudanca({ ...base, tipo: 'novo_preco_agendado', chave: k,
-        descricao: `${nome}: preço novo agendado para ${datas.join(', ')} (${agendadas.length} combinações)` });
+        descricao: `${nome}: preço novo agendado para ${datas.join(', ')} (${agendadas.length} combinações)`,
+        depois: agendadas.map((x) => ({ ...item(x), novo_preco_em: x.novo_preco_em, valor: Number(x.valor_bruto ?? x.valor) })) });
     }
     if (encerradas.length) {
       registrarMudanca({ ...base, tipo: 'encerrada', chave: k,
-        descricao: `${nome}: ${encerradas.length} combinação(ões) marcadas como encerradas (${[...new Set(encerradas.map((x) => x.plano))].join(', ')})` });
+        descricao: `${nome}: ${encerradas.length} combinação(ões) marcadas como encerradas (${[...new Set(encerradas.map((x) => x.plano))].join(', ')})`,
+        depois: encerradas.map((x) => ({ ...item(x), encerrada_em: x.encerrada_em, valor: Number(x.valor_bruto ?? x.valor) })) });
     }
     if (descontos.length) {
       const ex = descontos[0];
       registrarMudanca({ ...base, tipo: 'desconto', chave: k,
-        descricao: `${nome}: desconto/campanha mudou em ${descontos.length} combinação(ões) — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: ${ex.a.desconto != null ? ex.a.desconto + '%' : 'sem desconto'} → ${ex.n.desconto != null ? ex.n.desconto + '%' : 'sem desconto'} (valor com desconto R$ ${brl(ex.n.valor)})` });
+        descricao: `${nome}: desconto/campanha mudou em ${descontos.length} combinação(ões) — ex.: ${ex.n.plano} ${ex.n.acomodacao} ${ex.n.faixa}: ${ex.a.desconto != null ? ex.a.desconto + '%' : 'sem desconto'} → ${ex.n.desconto != null ? ex.n.desconto + '%' : 'sem desconto'} (valor com desconto R$ ${brl(ex.n.valor)})`,
+        antes: descontos.map(({ a, n }) => ({ ...item(n), desconto: a.desconto ?? null, valor: Number(a.valor), valor_cheio: Number(a.valor_bruto ?? a.valor) })),
+        depois: descontos.map(({ n }) => ({ ...item(n), desconto: n.desconto ?? null, valor: Number(n.valor), valor_cheio: Number(n.valor_bruto ?? n.valor) })) });
     }
     // combinações que existiam e sumiram (só se a tabela respondeu hoje)
     const sumiram = [...antes.values()].filter((a) => `${a.tabela_id}|${a.uf_id}` === k && !novos.has(a.chave)
       && planosConsultados.has(`${a.tabela_id}|${a.uf_id}|${a.plano_id}`));
     if (sumiram.length) {
       registrarMudanca({ ...base, tipo: 'combinacao_removida', chave: k,
-        descricao: `${nome}: ${sumiram.length} combinação(ões) de preço saíram (${[...new Set(sumiram.map((x) => `${x.plano} ${x.acomodacao} ${x.coparticipacao}`))].slice(0, 4).join('; ')})` });
+        descricao: `${nome}: ${sumiram.length} combinação(ões) de preço saíram (${[...new Set(sumiram.map((x) => `${x.plano} ${x.acomodacao} ${x.coparticipacao}`))].slice(0, 4).join('; ')})`,
+        antes: sumiram.map((x) => ({ ...item(x), valor: Number(x.valor_bruto ?? x.valor) })) });
     }
   }
 
@@ -144,11 +150,12 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
   for (const p of precos) {
     const t = tabelas.get(p.tabela_id); const u = ufs.get(`${p.tabela_id}|${p.uf_id}`);
     if (!t || !u) continue;
+    const nomePlano = (t.planos || []).find((x) => x.id === p.plano_id)?.nome || String(p.plano_id);
     const prod = { operadoraId: p.operadora_id, administradora: t.administradora || 'direto', tabelaId: p.tabela_id,
       planoId: p.plano_id, ufId: p.uf_id, cidadeId: u.cidade_exemplo, tipoTabela: p.tipo_tabela || t.tipo_tabela,
       coparticipacao: p.coparticipacao || undefined };
-    produtosCopart.set(`${p.tabela_id}|${p.plano_id}|${p.uf_id}|${p.coparticipacao}`, { ...prod, _uf: u.uf, _nome: t.nome, _op: t.operadora });
-    produtosCarencia.set(`${p.tabela_id}|${p.plano_id}|${p.uf_id}`, { ...prod, _uf: u.uf, _nome: t.nome, _op: t.operadora });
+    produtosCopart.set(`${p.tabela_id}|${p.plano_id}|${p.uf_id}|${p.coparticipacao}`, { ...prod, _uf: u.uf, _nome: t.nome, _op: t.operadora, _plano: nomePlano });
+    produtosCarencia.set(`${p.tabela_id}|${p.plano_id}|${p.uf_id}`, { ...prod, _uf: u.uf, _nome: t.nome, _op: t.operadora, _plano: nomePlano });
   }
   log(`Regras: ${produtosCopart.size} produtos de coparticipação, ${produtosCarencia.size} de carência`);
 
@@ -213,7 +220,7 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
       const rotulo = tipo === 'coparticipacao' ? 'Coparticipação' : 'Carência';
       registrarMudanca({ tipo, operadora: p._op, tabela_id: p.tabelaId, uf: p._uf, chave: k,
         descricao: `${rotulo} mudou — ${p._nome} (${p._uf}): ${ls.length} plano(s). ${resumoItens(a, ls[0])}`,
-        antes: a, depois: { ...ls[0], _p: undefined } });
+        antes: a, depois: { ...ls[0], _p: undefined, planos_afetados: [...new Set(ls.map((l) => l._p?._plano || l.plano_id))], copart_opcoes: [...new Set(ls.map((l) => l.coparticipacao).filter(Boolean))] } });
     }
     await gravar(tabelaDb, linhas.map(({ _p, ...l }) => l), 'chave');
     res[tipo] = linhas.length;
