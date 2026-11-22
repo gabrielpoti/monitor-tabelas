@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 
 const REPO = process.env.GITHUB_REPO || 'gabrielpoti/monitor-tabelas';
 // Janela em que uma execução já feita conta como "rodou no horário".
-const JANELA_H = { diario: 20, semanal: 60, rede: 60, descontos: 140 };
+const JANELA_H = { diario: 10, semanal: 60, rede: 60, descontos: 140 }; // diário: 10h, para não pular o dia quando o da véspera atrasou
 
 const gh = (caminho, init = {}) => fetch(`https://api.github.com/repos/${REPO}${caminho}`, {
   ...init,
