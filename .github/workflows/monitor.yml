@@ -60,7 +60,8 @@ jobs:
           echo "Modo: $MODO"
           node src/index.js "$MODO"
       - name: Continuar prioridade pendente
-        if: always()
+        # só quando a execução terminou bem: se falhou (ex.: login do Cotador expirado) não encadeia outra
+        if: success()
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GH_TOKEN: ${{ github.token }}
