@@ -21,15 +21,18 @@ export async function GET(req) {
   const { data: recentes } = await db().from('execucoes').select('id,status,inicio').eq('modo', modo).in('status', ['ok', 'rodando']).gte('inicio', desde).limit(1);
   if (recentes?.length) return NextResponse.json({ ok: true, acao: 'nada', motivo: `já rodou (#${recentes[0].id})` });
 
-  // 2) Há execução na fila ou rodando no GitHub? (pode ser o agendamento esperando outra terminar)
+  // 2) Se já há execução rodando ou na fila no GitHub, não dispara agora (um disparo novo derrubaria a que está
+  //    esperando na fila): coloca o modo na fila própria, e o fim da execução atual dispara (src/continuar.js).
   for (const status of ['queued', 'in_progress', 'waiting', 'pending']) {
     const r = await gh(`/actions/workflows/monitor.yml/runs?status=${status}&per_page=5`);
     const j = r.ok ? await r.json() : { total_count: 0 };
     if (j.total_count > 0) {
-      // se a que está rodando é de outro modo, o agendamento deste modo pode não ter sido criado: dispara mesmo assim,
-      // a fila do GitHub (concurrency) garante que uma espera a outra.
-      const agendadaEmFila = (j.workflow_runs || []).some((w) => w.event === 'schedule' && status !== 'in_progress');
-      if (agendadaEmFila) return NextResponse.json({ ok: true, acao: 'nada', motivo: 'agendamento do GitHub já está na fila' });
+      const s = db();
+      const { data } = await s.from('config').select('valor').eq('chave', 'fila_execucoes').maybeSingle();
+      let fila = []; try { fila = JSON.parse(data?.valor || '[]'); } catch {}
+      if (!fila.some((x) => x.modo === modo)) fila.push({ modo });
+      await s.from('config').upsert({ chave: 'fila_execucoes', valor: JSON.stringify(fila) });
+      return NextResponse.json({ ok: true, acao: 'enfileirou', modo, fila });
     }
   }
 
