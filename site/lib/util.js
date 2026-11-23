@@ -1,4 +1,4 @@
-export const GRUPOS = ['Hapvida', 'Hapvida Clinipam', 'NotreDame', 'Amil', 'Bradesco Saúde', 'SulAmérica', 'Unimed', 'Alice'];
+export const GRUPOS = ['Hapvida', 'Hapvida Clinipam', 'NotreDame', 'Amil', 'Bradesco Saúde', 'SulAmérica', 'Unimed', 'Alice', 'São Camilo'];
 
 export const slug = (g) => g.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
 export const grupoDoSlug = (s) => GRUPOS.find((g) => slug(g) === s) || null;
@@ -35,12 +35,13 @@ export function grupoDe(op) {
   if (/sul.?am.rica/.test(o)) return 'SulAmérica';
   if (o.includes('unimed')) return 'Unimed';
   if (/\balice\b/.test(o)) return 'Alice';
+  if (/s[ãa]o camilo/.test(o)) return 'São Camilo';
   return op || 'Outras';
 }
 
 // Padrões de busca por operadora no banco (ilike), espelhando grupo_operadora() do SQL.
 export const FILTRO_GRUPO = {
   Hapvida: ['%hapvida%'], 'Hapvida Clinipam': ['%clinipam%'], NotreDame: ['%notre%', '%gndi%', '%interm%dica%'],
-  Amil: ['amil%'], 'Bradesco Saúde': ['%bradesco%'], SulAmérica: ['%sul%am%rica%'], Unimed: ['%unimed%'], Alice: ['alice%'],
+  Amil: ['amil%'], 'Bradesco Saúde': ['%bradesco%'], SulAmérica: ['%sul%am%rica%'], Unimed: ['%unimed%'], Alice: ['alice%'], 'São Camilo': ['s_o camilo%'],
 };
 export const orIlike = (grupo, col = 'operadora') => FILTRO_GRUPO[grupo].map((p) => `${col}.ilike.${p}`).join(',');

@@ -39,6 +39,7 @@ export function grupoDe(op) {
   if (/sul.?am.rica/.test(o)) return 'SulAmérica';
   if (o.includes('unimed')) return 'Unimed';
   if (/\balice\b/.test(o)) return 'Alice';
+  if (/s[ãa]o camilo/.test(o)) return 'São Camilo';
   return op || 'Outras';
 }
 // Filtro opcional por operadora (modo prioridade)
