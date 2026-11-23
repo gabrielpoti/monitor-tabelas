@@ -42,6 +42,24 @@ async function main() {
       resumo.fortaleza = c?.cidades?.[0];
       resumo.ferramentas = [...cot.ferramentas.values()];
     }
+    if (modo === 'comparar') {
+      // Compara as tabelas que a conta conectada enxerga com o que está no banco (amostra de cidades grandes).
+      resumo.quemSou = await cot.ferramenta('contexto.quem-sou', {});
+      const { lerTudo } = await import('./db.js');
+      const { monitorada, TIPOS_TABELA } = await import('./config.js');
+      const nomes = ['São Paulo/SP', 'Rio de Janeiro/RJ', 'Fortaleza/CE', 'Belo Horizonte/MG', 'Curitiba/PR', 'Salvador/BA', 'Recife/PE',
+        'Brasília/DF', 'Goiânia/GO', 'Manaus/AM', 'Belém/PA', 'Porto Alegre/RS', 'Campinas/SP', 'Guarulhos/SP', 'Natal/RN', 'Joinville/SC'];
+      const cidades = (await lerTudo('cidades', 'id,nome,uf,uf_id')).filter((c) => nomes.includes(`${c.nome}/${c.uf}`));
+      const out = [];
+      for (const c of cidades) {
+        const banco = new Set((await lerTudo('tabela_cidade', 'tabela_id', (q) => q.eq('cidade_id', c.id))).map((x) => x.tabela_id));
+        const conta = new Set();
+        for (const tipo of TIPOS_TABELA) for (const t of (await cot.listarTabelas(c.uf_id, c.id, tipo)).filter(monitorada)) conta.add(t.id);
+        const soBanco = [...banco].filter((x) => !conta.has(x)), soConta = [...conta].filter((x) => !banco.has(x));
+        out.push({ cidade: `${c.nome}/${c.uf}`, banco: banco.size, conta: conta.size, soBanco, soConta });
+      }
+      resumo.comparacao = out;
+    }
     if (modo === 'cidades' || modo === 'semanal') resumo.cidades = await sincronizarCidades(cot);
     // A área só roda com a lista de cidades completa — senão a "varredura completa" ficaria parcial.
     if (modo === 'area' || (modo === 'semanal' && resumo.cidades?.completo)) resumo.area = await varrerArea(cot, registrarMudanca);
