@@ -16,6 +16,7 @@ export const TIPOS_MUDANCA = {
   combinacao_removida: 'Combinação removida', coparticipacao: 'Coparticipação', carencia: 'Carência',
   tabela_nova: 'Tabela nova', tabela_removida: 'Tabela removida', tabela_voltou: 'Tabela voltou', planos: 'Planos',
   area_entrou: 'Área (entrou)', area_saiu: 'Área (saiu)', rede: 'Rede credenciada', desconto_vidas: 'Desconto por quantidade', extensao: 'Copart/desconto (extensão)',
+  painel_preco: 'Painel: preço', painel_novo: 'Painel: plano novo', painel_removido: 'Painel: plano saiu',
 };
 
 const TIPOS_LOCAL = {

@@ -57,6 +57,7 @@ function grade(linhas, comDesconto) {
 export function detalhe(m, ctx) {
   const antes = m.antes, depois = m.depois;
   switch (m.tipo) {
+    case 'painel_preco':
     case 'preco': {
       const a = new Map((Array.isArray(antes) ? antes : []).map((x) => [x.chave, x]));
       return {
@@ -153,6 +154,11 @@ export function detalhe(m, ctx) {
         };
       }
       return { colunas: ['Situação', 'Local'], linhas: [...(depois?.entrou || []).map((n) => ['Entrou', n]), ...(antes?.saiu || []).map((n) => ['Saiu', n])] };
+    }
+    case 'painel_novo':
+    case 'painel_removido': {
+      const itens = (m.tipo === 'painel_novo' ? depois : antes) || [];
+      return { colunas: ['Plano · tabela (modalidade)', 'Vidas', 'Coparticipação', 'Código'], linhas: itens.map((x) => [x.nome, x.vidas || '', x.copart || '', x.key]) };
     }
     case 'extensao': {
       const fmt = (campo, v) => (typeof v === 'number' && /anos/.test(campo) ? brl(v) : v === '' || v == null ? '—' : String(v));
