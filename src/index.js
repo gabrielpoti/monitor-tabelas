@@ -11,7 +11,7 @@ import { varrerRede } from './rede.js';
 import { conferirDescontos } from './descontos.js';
 import { descobrirTabelas } from './descobrir.js';
 import { enviar, montarRelatorio } from './telegram.js';
-import { log, minutos, ultimoLog } from './util.js';
+import { log, minutos, ultimoLog, tempoAcabou } from './util.js';
 
 const modo = process.argv[2] || 'diario';
 
@@ -93,8 +93,28 @@ async function main() {
     if (modo === 'regras') resumo.regras = await conferirRegras(cot, registrarMudanca, process.env.GRUPO ? { grupo: process.env.GRUPO } : {});
     if (modo === 'descontos') resumo.descontos = await conferirDescontos(cot, registrarMudanca);
     if (modo === 'diario') {
-      resumo.precos = await conferirPrecos(cot, registrarMudanca);
-      resumo.regras = await conferirRegras(cot, registrarMudanca);
+      // A conferência diária pode não caber numa execução (o Cotador limita o ritmo): guarda onde parou
+      // e a próxima execução do dia continua dali (o fim desta coloca 'diario' na frente da fila).
+      const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+      let cur = null; try { cur = JSON.parse((await getConfig('diario_cursor')) || 'null'); } catch {}
+      if (cur && cur.dia !== hoje && Date.now() - new Date(cur.em).getTime() > 20 * 3600e3) cur = null;
+      if (!cur || cur.etapa === 'precos') {
+        resumo.precos = await conferirPrecos(cot, registrarMudanca, { inicio: cur?.lote || 0 });
+        cur = resumo.precos?.interrompido ? { dia: cur?.dia || hoje, em: cur?.em || new Date().toISOString(), etapa: 'precos', lote: resumo.precos.proximoLote } : null;
+      }
+      if (!cur || cur.etapa === 'regras') {
+        if (!tempoAcabou()) {
+          resumo.regras = await conferirRegras(cot, registrarMudanca, { inicio: cur?.etapa === 'regras' ? cur.regras : null });
+          cur = resumo.regras?.parou ? { dia: cur?.dia || hoje, em: cur?.em || new Date().toISOString(), etapa: 'regras', regras: resumo.regras.parou } : null;
+        } else cur = { dia: cur?.dia || hoje, em: cur?.em || new Date().toISOString(), etapa: 'regras', regras: null };
+      }
+      await setConfig('diario_cursor', cur ? JSON.stringify(cur) : null);
+      if (cur) {
+        let fila = []; try { fila = JSON.parse((await getConfig('fila_execucoes')) || '[]'); } catch {}
+        fila = [{ modo: 'diario' }, ...fila.filter((x) => x.modo !== 'diario')];
+        await setConfig('fila_execucoes', JSON.stringify(fila));
+        resumo.continua = cur;
+      }
     }
 
     if (mudancas.length) await inserir('mudancas', mudancas);

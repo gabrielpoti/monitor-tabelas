@@ -6,7 +6,7 @@ import { tempoAcabou, log, emParalelo, agrupar, estavel, brl, pct, doGrupo } fro
 
 const chavePreco = (x) => [x.tabela_id, x.plano_id, x.uf_id, x.faixa, x.acomodacao, x.coparticipacao, x.taxa_adesao ?? ''].join('|');
 
-export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
+export async function conferirPrecos(cot, registrarMudanca, { grupo, inicio = 0 } = {}) {
   const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id));
   if (!ufs.length) { log('Área ainda não varrida — nada a conferir.'); return { aguardandoArea: true }; }
@@ -32,8 +32,10 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
   let lotesComFalha = 0, ultimoErro = null;
   const gravados = new Set();
 
-  for (let i = 0; i < lotes.length; i += 10) {
-    if (tempoAcabou()) { interrompido = true; break; }
+  let proximoLote = null;
+  if (inicio) log(`Preços: continuando do lote ${inicio}`);
+  for (let i = inicio; i < lotes.length; i += 10) {
+    if (tempoAcabou()) { interrompido = true; proximoLote = i; break; }
     const rs = await emParalelo(lotes.slice(i, i + 10), async (lote) => {
       const planosLote = new Set(lote.planos.map((p) => p.id));
       // Só aproveita o lote se todas as faixas responderem; se uma falhar, mantém os preços de ontem.
@@ -72,7 +74,7 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
     }
     if ((i / 10) % 10 === 0) log(`Preços:${Math.min(i + 10, lotes.length)}/${lotes.length} lotes, ${cot.chamadas} chamadas`);
   }
-  for (const u of ufs) if (!consultadas.has(`${u.tabela_id}|${u.uf_id}`)) semPreco.add(`${tabelas.get(u.tabela_id).nome} (${u.uf})`);
+  if (!interrompido && !inicio) for (const u of ufs) if (!consultadas.has(`${u.tabela_id}|${u.uf_id}`)) semPreco.add(`${tabelas.get(u.tabela_id).nome} (${u.uf})`);
 
   // ----- comparação -----
   const porTabelaUf = agrupar([...novos.values()], (p) => `${p.tabela_id}|${p.uf_id}`);
@@ -138,10 +140,10 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo } = {}) {
   const remover = [...antes.values()].filter((a) => planosConsultados.has(`${a.tabela_id}|${a.uf_id}|${a.plano_id}`) && !novos.has(a.chave)).map((a) => a.chave);
   for (let i = 0; i < remover.length; i += 200) await db.from('precos').delete().in('chave', remover.slice(i, i + 200));
 
-  return { precos: novos.size, tabelasUf: ufs.length, semPreco: [...semPreco], interrompido, lotesComFalha, ultimoErro };
+  return { precos: novos.size, tabelasUf: ufs.length, semPreco: [...semPreco], interrompido, proximoLote, totalLotes: lotes.length, lotesComFalha, ultimoErro };
 }
 
-export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
+export async function conferirRegras(cot, registrarMudanca, { grupo, inicio = null } = {}) {
   const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = new Map((await lerTudo('tabela_uf')).map((x) => [`${x.tabela_id}|${x.uf_id}`, x]));
   const precos = await lerTudo('precos', 'tabela_id,plano_id,uf_id,tipo_tabela,coparticipacao,operadora_id');
@@ -164,7 +166,8 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
     ['coparticipacao', produtosCopart, (ps) => cot.coparticipacao(ps), 'coparticipacao'],
     ['carencia', produtosCarencia, (ps) => cot.carencia(ps), 'carencia'],
   ]) {
-    if (tempoAcabou()) { res[tipo] = 'pulado (tempo)'; continue; }
+    if (inicio && inicio.tipo === 'carencia' && tipo === 'coparticipacao') { res[tipo] = 'feito na execução anterior'; continue; }
+    if (tempoAcabou()) { res[tipo] = 'pulado (tempo)'; res.parou = res.parou || { tipo, lote: 0 }; continue; }
     const antes = new Map((await lerTudo(tabelaDb)).map((x) => [x.chave, x]));
     const entradas = [...mapa.entries()];
     const linhas = [];
@@ -174,7 +177,10 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
     for (const [, grupo] of agrupar(entradas, ([, p]) => `${p.tabelaId}|${p.ufId}`)) {
       for (let i = 0; i < grupo.length; i += 10) lotes.push(grupo.slice(i, i + 10));
     }
-    for (let i = 0; i < lotes.length && !tempoAcabou(); i += 10) {
+    const inicioLote = inicio && inicio.tipo === tipo ? inicio.lote : 0;
+    if (inicioLote) log(`Regras (${tipo}): continuando do lote ${inicioLote}`);
+    let i = inicioLote;
+    for (; i < lotes.length && !tempoAcabou(); i += 10) {
       await emParalelo(lotes.slice(i, i + 10), async (lote) => {
         const d = await fn(lote.map(([, p]) => limpar(p)));
         lote.forEach(([chave, p], idx) => {
@@ -189,6 +195,7 @@ export async function conferirRegras(cot, registrarMudanca, { grupo } = {}) {
         });
       });
     }
+    if (i < lotes.length) res.parou = res.parou || { tipo, lote: i };
     // comparação agrupada por tabela/UF
     const instante = (d) => (d ? new Date(d).getTime() : null);
     const lista = (x) => (Array.isArray(x) && x.length ? estavel(x) : '');
