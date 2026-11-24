@@ -24,11 +24,15 @@ async function removerLogo(form) {
 
 export default async function Config() {
   const s = db();
-  const [{ data: arquivos }, { data: contas }, loginKey] = await Promise.all([
+  const [{ data: arquivos }, { data: contas }, loginKey, { data: extCfg }] = await Promise.all([
     s.storage.from('logos').list('', { limit: 100 }),
     s.from('oauth_state').select('id,conta_nome,updated_at,refresh_token').like('id', 'cotador%'),
     config('login_key'),
+    s.from('config').select('chave,valor').or('chave.eq.extensao_key,chave.like.extensao_status_%'),
   ]);
+  const extKey = (extCfg || []).find((c) => c.chave === 'extensao_key')?.valor;
+  const extStatus = (extCfg || []).filter((c) => c.chave.startsWith('extensao_status_')).map((c) => { try { return JSON.parse(c.valor); } catch { return null; } }).filter(Boolean)
+    .sort((a, b) => a.uf.localeCompare(b.uf));
   const tem = new Set((arquivos || []).map((a) => a.name));
   const v = Date.now();
   const linkLogin = `${process.env.SUPABASE_URL || 'https://knvtovsrbyhpcgirgtbl.supabase.co'}/functions/v1/cotador-auth?k=${loginKey}`;
@@ -52,7 +56,17 @@ export default async function Config() {
           </div>); })}
       </div>
 
-      <h2>Contas do Cotador</h2>
+      <h2>Extensão do Chrome</h2>
+      <div className="cartao">
+        <p className="pequeno">Cada perfil do Chrome com a extensão (uma conta do Cotador, um estado) manda os preços e as alterações para este site. Cole a chave abaixo no campo <b>Chave do site</b> da extensão.</p>
+        <p><code style={{ wordBreak: 'break-all', userSelect: 'all' }}>{extKey || '—'}</code></p>
+        {extStatus.length ? (
+          <table><thead><tr><th>Estado</th><th>Conta</th><th>Último envio</th><th>Resultado</th></tr></thead>
+            <tbody>{extStatus.map((x) => <tr key={x.uf}><td>{x.uf}</td><td>{x.conta}</td><td>{dataHoraBR(x.quando)}</td><td className="pequeno">{x.resultado}</td></tr>)}</tbody></table>
+        ) : <p className="pequeno">Nenhuma extensão enviou dados ainda.</p>}
+      </div>
+
+      <h2>Contas do Cotador (integração oficial, pausada)</h2>
       <p className="sub">O monitor divide as consultas entre as contas conectadas: cada conta extra aumenta o ritmo. A conta principal também define quais tabelas aparecem em cada cidade.</p>
       <div className="grade">
         {[['', 'cotador', 'Conta principal'], ['2', 'cotador2', 'Conta extra 2'], ['3', 'cotador3', 'Conta extra 3']].map(([c, id, titulo]) => {

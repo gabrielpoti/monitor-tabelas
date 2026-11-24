@@ -154,6 +154,13 @@ export function detalhe(m, ctx) {
       }
       return { colunas: ['Situação', 'Local'], linhas: [...(depois?.entrou || []).map((n) => ['Entrou', n]), ...(antes?.saiu || []).map((n) => ['Saiu', n])] };
     }
+    case 'extensao': {
+      const fmt = (campo, v) => (typeof v === 'number' && /anos/.test(campo) ? brl(v) : v === '' || v == null ? '—' : String(v));
+      return {
+        colunas: ['Seção', 'Mudança', 'Plano / item', 'Campo', 'Antes', 'Depois'],
+        linhas: (Array.isArray(depois) ? depois : []).map((d) => [d.secao, d.mudanca, d.item, d.campo, fmt(d.campo, d.de), fmt(d.campo, d.para)]),
+      };
+    }
     default:
       return { colunas: [], linhas: [] };
   }
