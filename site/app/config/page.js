@@ -24,9 +24,9 @@ async function removerLogo(form) {
 
 export default async function Config() {
   const s = db();
-  const [{ data: arquivos }, { data: st }, loginKey] = await Promise.all([
+  const [{ data: arquivos }, { data: contas }, loginKey] = await Promise.all([
     s.storage.from('logos').list('', { limit: 100 }),
-    s.from('oauth_state').select('expires_at,updated_at,refresh_token').eq('id', 'cotador').maybeSingle(),
+    s.from('oauth_state').select('id,conta_nome,updated_at,refresh_token').like('id', 'cotador%'),
     config('login_key'),
   ]);
   const tem = new Set((arquivos || []).map((a) => a.name));
@@ -34,7 +34,7 @@ export default async function Config() {
   const linkLogin = `${process.env.SUPABASE_URL || 'https://knvtovsrbyhpcgirgtbl.supabase.co'}/functions/v1/cotador-auth?k=${loginKey}`;
   return (
     <>
-      <h1>Logos e conexão</h1>
+      <h1>Logos e contas</h1>
       <p className="sub">Logos das operadoras usados no site e no topo das planilhas. Envie PNG (até 2 MB), de preferência com fundo transparente.</p>
       <div className="grade">
         {GRUPOS.map((g) => { const sg = slug(g); return (
@@ -52,11 +52,22 @@ export default async function Config() {
           </div>); })}
       </div>
 
-      <h2>Conexão com o Cotador</h2>
-      <div className="cartao">
-        <p>{st?.refresh_token ? <span className="chip ok">conectado</span> : <span className="chip erro">sem login</span>} Última renovação: {dataHoraBR(st?.updated_at)}</p>
-        <p className="pequeno">Se o monitor avisar que o acesso caiu, refaça o login (abre a tela de autorização do Cotador; escolha "Somente consultar").</p>
-        <a className="botao sec" href={linkLogin} target="_blank" rel="noreferrer">Refazer login no Cotador</a>
+      <h2>Contas do Cotador</h2>
+      <p className="sub">O monitor divide as consultas entre as contas conectadas: cada conta extra aumenta o ritmo. A conta principal também define quais tabelas aparecem em cada cidade.</p>
+      <div className="grade">
+        {[['', 'cotador', 'Conta principal'], ['2', 'cotador2', 'Conta extra 2'], ['3', 'cotador3', 'Conta extra 3']].map(([c, id, titulo]) => {
+          const st = (contas || []).find((x) => x.id === id);
+          const ok = !!st?.refresh_token;
+          return (
+            <div key={id} className="cartao">
+              <h3>{titulo}</h3>
+              <p>{ok ? <span className="chip ok">conectada</span> : <span className="chip erro">sem login</span>} {ok && <b>{st.conta_nome || 'nome aparece após a próxima rodada'}</b>}</p>
+              {ok && <p className="pequeno">Última renovação: {dataHoraBR(st.updated_at)}</p>}
+              <p className="pequeno">Antes de conectar outra conta, saia do Cotador neste navegador (ou use uma janela anônima). Na autorização, escolha "Somente consultar".</p>
+              <a className="botao sec" href={`${linkLogin}${c ? `&c=${c}` : ''}`} target="_blank" rel="noreferrer">{ok ? 'Refazer login' : 'Conectar conta'}</a>
+            </div>
+          );
+        })}
       </div>
 
       <h2>Botão "Rodar agora"</h2>

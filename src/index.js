@@ -34,17 +34,17 @@ async function main() {
 
   try {
     await cot.iniciar();
-    log(`Conectado ao cotador. ${cot.ferramentas.size} ferramentas.`);
+    log(`Conectado ao cotador. ${cot.ferramentas.size} ferramentas, ${cot.contas.length} conta(s): ${cot.contas.map((c) => c.nome).join(', ')}.`);
 
     if (modo === 'teste') {
-      resumo.quemSou = await cot.ferramenta('contexto.quem-sou', {});
+      resumo.quemSou = await cot.ferramenta('contexto.quem-sou', {}, { fixa: true });
       const c = await cot.buscarCidade('CE', 'Fortaleza');
       resumo.fortaleza = c?.cidades?.[0];
       resumo.ferramentas = [...cot.ferramentas.values()];
     }
     if (modo === 'comparar') {
       // Compara as tabelas que a conta conectada enxerga com o que está no banco (amostra de cidades grandes).
-      resumo.quemSou = await cot.ferramenta('contexto.quem-sou', {});
+      resumo.quemSou = await cot.ferramenta('contexto.quem-sou', {}, { fixa: true });
       const { lerTudo } = await import('./db.js');
       const { monitorada, TIPOS_TABELA } = await import('./config.js');
       const nomes = ['São Paulo/SP', 'Rio de Janeiro/RJ', 'Fortaleza/CE', 'Belo Horizonte/MG', 'Curitiba/PR', 'Salvador/BA', 'Recife/PE',
@@ -128,6 +128,7 @@ async function main() {
 
     if (mudancas.length) await inserir('mudancas', mudancas);
     resumo.errosCotador = cot.resumoErros();
+    resumo.contas = cot.resumoContas();
     await db.from('execucoes').update({
       fim: new Date().toISOString(), status: 'ok', chamadas: cot.chamadas, erros: cot.erros, resumo,
     }).eq('id', exec.id);
@@ -153,7 +154,7 @@ async function main() {
     if (mudancas.length) await inserir('mudancas', mudancas).catch(() => {});
     await db.from('execucoes').update({
       fim: new Date().toISOString(), status: 'erro', chamadas: cot.chamadas, erros: cot.erros,
-      resumo: { ...resumo, erro: String(e.message || e), errosCotador: cot.resumoErros() },
+      resumo: { ...resumo, erro: String(e.message || e), errosCotador: cot.resumoErros(), contas: cot.resumoContas() },
     }).eq('id', exec.id);
     await enviar(`⚠️ <b>Monitor de Tabelas (${modo}) falhou</b>\n${String(e.message || e).slice(0, 800)}`);
     process.exit(1);
