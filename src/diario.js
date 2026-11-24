@@ -2,13 +2,24 @@
 
 import { db, lerTudo, gravar } from './db.js';
 import { FAIXAS } from './config.js';
-import { tempoAcabou, log, emParalelo, agrupar, estavel, brl, pct, doGrupo } from './util.js';
+import { tempoAcabou, log, emParalelo, agrupar, estavel, brl, pct, doGrupo, grupoDe } from './util.js';
 
 const chavePreco = (x) => [x.tabela_id, x.plano_id, x.uf_id, x.faixa, x.acomodacao, x.coparticipacao, x.taxa_adesao ?? ''].join('|');
 
-export async function conferirPrecos(cot, registrarMudanca, { grupo, inicio = 0 } = {}) {
+// Escopos da conferência diária: as operadoras/estados de maior venda vão dia sim, dia não; o resto, 2x por semana.
+const PRIORIDADE_GRUPOS = new Set(['Hapvida', 'NotreDame', 'Unimed']);
+const PRIORIDADE_UFS = new Set(['SP', 'RJ', 'CE']);
+const ehPrioridade = (t, uf) => PRIORIDADE_GRUPOS.has(grupoDe(t.operadora)) && PRIORIDADE_UFS.has(uf);
+export const FILTROS_ESCOPO = { prioridade: ehPrioridade, demais: (t, uf) => !ehPrioridade(t, uf), todos: null };
+export function escoposDoDia(dia) {
+  const d = new Date(`${dia}T12:00:00Z`);
+  const n = Math.floor(d.getTime() / 864e5), semana = d.getUTCDay(); // 0 = domingo
+  return [...(n % 2 === 0 ? ['prioridade'] : []), ...([2, 6].includes(semana) ? ['demais'] : [])]; // demais: terça e sábado
+}
+
+export async function conferirPrecos(cot, registrarMudanca, { grupo, inicio = 0, filtro = null } = {}) {
   const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
-  const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id));
+  const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id) && (!filtro || filtro(tabelas.get(x.tabela_id), x.uf)));
   if (!ufs.length) { log('Área ainda não varrida — nada a conferir.'); return { aguardandoArea: true }; }
 
   const antes = new Map((await lerTudo('precos')).map((p) => [p.chave, p]));
@@ -143,7 +154,7 @@ export async function conferirPrecos(cot, registrarMudanca, { grupo, inicio = 0 
   return { precos: novos.size, tabelasUf: ufs.length, semPreco: [...semPreco], interrompido, proximoLote, totalLotes: lotes.length, lotesComFalha, ultimoErro };
 }
 
-export async function conferirRegras(cot, registrarMudanca, { grupo, inicio = null } = {}) {
+export async function conferirRegras(cot, registrarMudanca, { grupo, inicio = null, filtro = null } = {}) {
   const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = new Map((await lerTudo('tabela_uf')).map((x) => [`${x.tabela_id}|${x.uf_id}`, x]));
   const precos = await lerTudo('precos', 'tabela_id,plano_id,uf_id,tipo_tabela,coparticipacao,operadora_id');
@@ -152,6 +163,7 @@ export async function conferirRegras(cot, registrarMudanca, { grupo, inicio = nu
   for (const p of precos) {
     const t = tabelas.get(p.tabela_id); const u = ufs.get(`${p.tabela_id}|${p.uf_id}`);
     if (!t || !u) continue;
+    if (filtro && !filtro(t, u.uf)) continue;
     const nomePlano = (t.planos || []).find((x) => x.id === p.plano_id)?.nome || String(p.plano_id);
     const prod = { operadoraId: p.operadora_id, administradora: t.administradora || 'direto', tabelaId: p.tabela_id,
       planoId: p.plano_id, ufId: p.uf_id, cidadeId: u.cidade_exemplo, tipoTabela: p.tipo_tabela || t.tipo_tabela,
