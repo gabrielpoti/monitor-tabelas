@@ -174,7 +174,7 @@ export class Cotador {
         if (limite) {
           this.pausaAte = Math.max(this.pausaAte, Date.now() + pausa);
           this.pausasPorLimite++;
-          if (this.pausasPorLimite <= 20) console.log(`[cotador] limite atingido; pausando ${Math.round(pausa / 1000)}s`);
+          console.log(`[cotador] limite atingido (${this.pausasPorLimite}ª vez, ${this.chamadas} chamadas); pausando ${Math.round(pausa / 1000)}s`);
         } else {
           await sleep(Math.min(pausa, Math.max(0, msRestantes())));
         }

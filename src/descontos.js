@@ -43,7 +43,7 @@ export async function conferirDescontos(cot, registrarMudanca, { grupo } = {}) {
   const tabelas = new Map((await lerTudo('tabelas', '*', (q) => q.eq('ativa', true))).filter(doGrupo(grupo)).map((t) => [t.id, t]));
   const ufs = (await lerTudo('tabela_uf')).filter((x) => tabelas.has(x.tabela_id));
   if (!ufs.length) return { aguardandoArea: true };
-  const antes = new Map((await lerTudo('descontos', 'chave,texto,tabela_id,uf')).map((d) => [d.chave, d]));
+  const antes = new Map((await lerTudo('descontos', 'chave,texto,regra,tabela_id,uf')).map((d) => [d.chave, d]));
 
   const lotes = [];
   for (const [k, grupo] of agrupar(ufs, (x) => `${x.uf_id}|${tabelas.get(x.tabela_id).tipo_tabela}`)) {
@@ -89,7 +89,15 @@ export async function conferirDescontos(cot, registrarMudanca, { grupo } = {}) {
   });
 
   // alertas agrupados por tabela/UF
-  const mudaram = linhas.filter((l) => antes.has(l.chave) && antes.get(l.chave).texto !== l.texto);
+  // Compara só as quantidades consultadas nas duas vezes (o conjunto varia com a composição do lote).
+  const difereRegra = (a, l) => {
+    if (!Array.isArray(a.regra) || !a.regra.length) return a.texto !== l.texto;
+    const pa = new Map(a.regra.map((r) => [r.vidas, r.pct]));
+    const comuns = l.regra.filter((r) => pa.has(r.vidas));
+    if (!comuns.length) return false;
+    return comuns.some((r) => Math.abs(pa.get(r.vidas) - r.pct) > 0.3);
+  };
+  const mudaram = linhas.filter((l) => antes.has(l.chave) && difereRegra(antes.get(l.chave), l));
   for (const [, ls] of agrupar(mudaram, (l) => `${l.tabela_id}|${l.uf_id}`)) {
     const t = tabelas.get(ls[0].tabela_id);
     const ex = ls[0];
