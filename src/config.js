@@ -11,7 +11,7 @@ export const MCP_URL = MCP_BASE + '/mcp';
 
 // Quantas chamadas simultâneas ao cotador e pausa mínima entre elas (ms).
 export const CONCORRENCIA = Number(process.env.CONCORRENCIA || 1);
-export const PAUSA_MS = Number(process.env.PAUSA_MS || 700);
+export const PAUSA_MS = Number(process.env.PAUSA_MS || 1800);
 
 // Tempo máximo de uma execução antes de salvar o ponto e parar (min).
 // O GitHub Actions corta em 360 min; paramos antes para gravar o progresso.
